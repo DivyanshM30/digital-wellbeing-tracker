@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Digital Wellness Tracker - Desktop Application</title>
+    <link rel="stylesheet" href="landing_page/styles.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+</head>
+<body>
+    <!-- Hero Section -->
+    <header class="hero-section">
+        <div class="container">
+            <div class="hero-content">
+                <div class="hero-text">
+                    <div class="badge">
+                        <i data-lucide="brain"></i>
+                        AI-Powered Digital Wellness
+                    </div>
+                    <h1>Desktop Digital Wellbeing Tracker</h1>
+                    <p class="hero-subtitle">Machine Learning-Powered Usage Pattern Analysis</p>
+                    <p class="hero-description">
+                        Monitor your screen time, analyze usage patterns with AI, and build healthier digital habits with our
+                        intelligent desktop application featuring real-time tracking and smart insights.
+                    </p>
+                    <div class="hero-buttons">
+                        <button class="btn btn-primary" onclick="handleDownload('windows')">
+                            <i data-lucide="download"></i>
+                            Download for Windows
+                        </button>
+                        <button class="btn btn-outline" onclick="handleDownload('source')">
+                            <i data-lucide="github"></i>
+                            Get Source Code
+                        </button>
+                    </div>
+                    <div class="platform-buttons">
+                        <button class="btn btn-ghost" onclick="handleDownload('mac')">macOS</button>
+                        <button class="btn btn-ghost" onclick="handleDownload('linux')">Linux</button>
+                    </div>
+                    <p class="creator">Created by Divyansh Mishra</p>
+                </div>
+                <div class="hero-image">
+                    <div class="desktop-mockup">
+                        <div class="window-frame">
+                            <div class="window-header">
+                                <div class="window-controls">
+                                    <div class="control red"></div>
+                                    <div class="control yellow"></div>
+                                    <div class="control green"></div>
+                                </div>
+                                <span class="window-title">Digital Wellness Tracker</span>
+                            </div>
+                            <div class="window-content">
+                                <img src="landing_page/pic/image.png" alt="Desktop App Screenshot">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Core Features Section -->
+    <section class="features-section">
+        <div class="container">
+            <div class="section-header">
+                <h2>Core Features</h2>
+                <p>Advanced desktop application with real-time monitoring, AI-powered insights, and intelligent voice alerts to promote healthier digital habits.</p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i data-lucide="activity"></i>
+                    </div>
+                    <h3>Real-Time System Monitoring</h3>
+                    <p>Uses <code>psutil</code> to track active applications and system activity in real-time, providing accurate usage statistics and process monitoring.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i data-lucide="brain"></i>
+                    </div>
+                    <h3>Machine Learning Analysis</h3>
+                    <p>Advanced pattern recognition algorithms analyze your usage habits to identify trends, predict behavior, and provide personalized recommendations for better digital wellness.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i data-lucide="mic"></i>
+                    </div>
+                    <h3>Intelligent Voice Alerts</h3>
+                    <p>Powered by <code>pyttsx3</code>, delivers non-intrusive voice reminders after excessive usage periods, helping you maintain healthy screen time habits.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i data-lucide="bar-chart-3"></i>
+                    </div>
+                    <h3>Advanced Data Visualization</h3>
+                    <p>Beautiful charts and graphs using <code>matplotlib</code> provide daily and weekly tracking insights with comprehensive usage statistics.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i data-lucide="zap"></i>
+                    </div>
+                    <h3>Multithreaded Performance</h3>
+                    <p>Implemented with advanced threading to ensure smooth UI experience without blocking background monitoring tasks, maintaining system responsiveness.</p>
+                </div>
+                <div class="feature-card">
+                    <div class="feature-icon">
+                        <i data-lucide="monitor"></i>
+                    </div>
+                    <h3>Cross-Platform Desktop GUI</h3>
+                    <p>Native desktop application with intuitive GUI interface, supporting Windows, macOS, and Linux platforms for comprehensive digital wellness tracking.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Technical Architecture Section -->
+    <section class="architecture-section">
+        <div class="container">
+            <div class="section-header">
+                <div class="badge">Technical Excellence</div>
+                <h2>Advanced Architecture & Technologies</h2>
+                <p>Built with cutting-edge technologies and best practices for performance, reliability, and user experience.</p>
+            </div>
+            <div class="architecture-grid">
+                <div class="architecture-card blue">
+                    <div class="card-decoration"></div>
+                    <div class="architecture-icon">
+                        <i data-lucide="activity"></i>
+                    </div>
+                    <h3>System Process Monitoring</h3>
+                    <p>Leverages Python's <code>psutil</code> library for comprehensive system monitoring, tracking CPU usage, memory consumption, and active processes with minimal system overhead.</p>
+                    <ul class="feature-list">
+                        <li><i data-lucide="check"></i> Real-time application tracking</li>
+                        <li><i data-lucide="check"></i> Cross-platform compatibility</li>
+                        <li><i data-lucide="check"></i> Low resource consumption</li>
+                    </ul>
+                </div>
+                <div class="architecture-card purple">
+                    <div class="card-decoration"></div>
+                    <div class="architecture-icon">
+                        <i data-lucide="brain"></i>
+                    </div>
+                    <h3>Machine Learning Intelligence</h3>
+                    <p>Advanced pattern recognition and predictive analytics to understand user behavior, identify usage trends, and provide intelligent recommendations for improved digital wellness.</p>
+                    <ul class="feature-list">
+                        <li><i data-lucide="check"></i> Usage pattern analysis</li>
+                        <li><i data-lucide="check"></i> Predictive behavior modeling</li>
+                        <li><i data-lucide="check"></i> Personalized recommendations</li>
+                    </ul>
+                </div>
+                <div class="architecture-card green">
+                    <div class="card-decoration"></div>
+                    <div class="architecture-icon">
+                        <i data-lucide="bar-chart-3"></i>
+                    </div>
+                    <h3>Advanced Data Visualization</h3>
+                    <p>Comprehensive data visualization using <code>matplotlib</code> with interactive charts, trend analysis, and detailed reporting for actionable insights.</p>
+                    <ul class="feature-list">
+                        <li><i data-lucide="check"></i> Daily & weekly tracking graphs</li>
+                        <li><i data-lucide="check"></i> Interactive statistical reports</li>
+                        <li><i data-lucide="check"></i> Trend analysis & forecasting</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- App Screenshots Section -->
+    <section class="screenshots-section">
+        <div class="container">
+            <div class="section-header">
+                <h2>Application Interface</h2>
+                <p>Explore the intuitive desktop interface with real-time monitoring, AI insights, and comprehensive analytics.</p>
+            </div>
+            <div class="tabs-container">
+                <div class="tabs-list">
+                    <button class="tab-trigger active" data-tab="dashboard">
+                        <i data-lucide="monitor"></i>
+                        Dashboard
+                    </button>
+                    <button class="tab-trigger" data-tab="analytics">
+                        <i data-lucide="bar-chart-3"></i>
+                        Analytics
+                    </button>
+                    <button class="tab-trigger" data-tab="insights">
+                        <i data-lucide="brain"></i>
+                        AI Insights
+                    </button>
+                    <button class="tab-trigger" data-tab="monitoring">
+                        <i data-lucide="activity"></i>
+                        Monitoring
+                    </button>
+                </div>
+                <div class="tabs-content">
+                    <div class="tab-content active" id="dashboard">
+                        <div class="screenshot-container">
+                            <div class="screenshot-frame">
+                                <img src="https://via.placeholder.com/960x600/f3f4f6/6b7280?text=Real-time+Dashboard+with+Live+Monitoring" alt="Dashboard Screenshot">
+                            </div>
+                            <div class="screenshot-info">
+                                <h3>Real-time Monitoring Dashboard</h3>
+                                <p>Live system monitoring with active application tracking and usage statistics.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-content" id="analytics">
+                        <div class="screenshot-container">
+                            <div class="screenshot-frame">
+                                <img src="https://via.placeholder.com/960x600/f3f4f6/6b7280?text=Advanced+Analytics+with+Matplotlib+Charts" alt="Analytics Screenshot">
+                            </div>
+                            <div class="screenshot-info">
+                                <h3>Advanced Analytics & Visualization</h3>
+                                <p>Comprehensive charts and graphs showing daily and weekly usage patterns.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-content" id="insights">
+                        <div class="screenshot-container">
+                            <div class="screenshot-frame">
+                                <img src="https://via.placeholder.com/960x600/f3f4f6/6b7280?text=Machine+Learning+Insights+and+Predictions" alt="AI Insights Screenshot">
+                            </div>
+                            <div class="screenshot-info">
+                                <h3>AI-Powered Usage Insights</h3>
+                                <p>Machine learning analysis of usage patterns with predictive recommendations.</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-content" id="monitoring">
+                        <div class="screenshot-container">
+                            <div class="screenshot-frame">
+                                <img src="https://via.placeholder.com/960x600/f3f4f6/6b7280?text=System+Monitoring+and+Voice+Alert+Settings" alt="Monitoring Settings Screenshot">
+                            </div>
+                            <div class="screenshot-info">
+                                <h3>System Monitoring & Voice Alerts</h3>
+                                <p>Configure monitoring settings and customize voice reminder preferences.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Technical Implementation Section -->
+    <section class="implementation-section">
+        <div class="container">
+            <div class="section-header">
+                <h2>Technical Implementation</h2>
+                <p>Built with modern Python technologies and best practices for performance, reliability, and user experience.</p>
+            </div>
+            <div class="implementation-grid">
+                <div class="implementation-card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i data-lucide="computer"></i>
+                            Core Technologies
+                        </div>
+                        <p class="card-description">Python-based desktop application stack</p>
+                    </div>
+                    <div class="card-content">
+                        <ul class="tech-list">
+                            <li>
+                                <i data-lucide="check"></i>
+                                <div>
+                                    <strong>psutil</strong> - System and process monitoring
+                                </div>
+                            </li>
+                            <li>
+                                <i data-lucide="check"></i>
+                                <div>
+                                    <strong>pyttsx3</strong> - Text-to-speech voice alerts
+                                </div>
+                            </li>
+                            <li>
+                                <i data-lucide="check"></i>
+                                <div>
+                                    <strong>matplotlib</strong> - Advanced data visualization
+                                </div>
+                            </li>
+                            <li>
+                                <i data-lucide="check"></i>
+                                <div>
+                                    <strong>Threading</strong> - Responsive UI with background processing
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="implementation-card">
+                    <div class="card-header">
+                        <div class="card-title">
+                            <i data-lucide="brain"></i>
+                            AI & Machine Learning
+                        </div>
+                        <p class="card-description">Intelligent pattern analysis and predictions</p>
+                    </div>
+                    <div class="card-content">
+                        <ul class="tech-list">
+                            <li>
+                                <i data-lucide="check"></i>
+                                <div>
+                                    <strong>Pattern Recognition</strong> - Identify usage trends
+                                </div>
+                            </li>
+                            <li>
+                                <i data-lucide="check"></i>
+                                <div>
+                                    <strong>Behavioral Analysis</strong> - Understand user habits
+                                </div>
+                            </li>
+                            <li>
+                                <i data-lucide="check"></i>
+                                <div>
+                                    <strong>Predictive Modeling</strong> - Forecast usage patterns
+                                </div>
+                            </li>
+                            <li>
+                                <i data-lucide="check"></i>
+                                <div>
+                                    <strong>Smart Recommendations</strong> - Personalized insights
+                                </div>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Call to Action Section -->
+    <section class="cta-section">
+        <div class="container">
+            <div class="cta-content">
+                <h2>Ready to Transform Your Digital Habits?</h2>
+                <p>Download our AI-powered desktop application and start building healthier digital habits with intelligent monitoring and personalized insights.</p>
+                <div class="cta-buttons">
+                    <button class="btn btn-primary" onclick="handleDownload('windows')">
+                        <i data-lucide="download"></i>
+                        Download for Windows
+                    </button>
+                    <button class="btn btn-outline" onclick="handleDownload('source')">
+                        <i data-lucide="github"></i>
+                        View Source Code
+                    </button>
+                </div>
+                <div class="platform-buttons">
+                    <button class="btn btn-ghost" onclick="handleDownload('mac')">Download for macOS</button>
+                    <button class="btn btn-ghost" onclick="handleDownload('linux')">Download for Linux</button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <div class="footer-section">
+                    <h3>Digital Wellbeing Tracker</h3>
+                    <p>AI-Powered Desktop Application for Digital Wellness</p>
+                    <p>Created by Divyansh Mishra</p>
+                </div>
+                <div class="footer-section">
+                    <h3>Key Features</h3>
+                    <ul>
+                        <li>Real-time System Monitoring</li>
+                        <li>Machine Learning Analysis</li>
+                        <li>Voice Alert System</li>
+                        <li>Advanced Data Visualization</li>
+                        <li>Cross-platform Desktop GUI</li>
+                        <li>Multithreaded Performance</li>
+                    </ul>
+                </div>
+                <div class="footer-section">
+                    <h3>Technologies</h3>
+                    <ul>
+                        <li><i data-lucide="computer"></i> Python Desktop Application</li>
+                        <li><i data-lucide="activity"></i> psutil System Monitoring</li>
+                        <li><i data-lucide="mic"></i> pyttsx3 Voice Alerts</li>
+                        <li><i data-lucide="bar-chart-3"></i> matplotlib Visualization</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2025 Digital Wellbeing Tracker. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="landing_page/script.js"></script>
+</body>
+</html>
