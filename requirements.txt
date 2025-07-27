@@ -1,0 +1,11 @@
+psutil
+pywin32
+pyttsx3
+matplotlib
+tk
+pystray
+Pillow
+plyer
+sv_ttk
+pandas
+scikit-learn
