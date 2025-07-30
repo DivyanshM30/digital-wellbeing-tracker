@@ -29,7 +29,7 @@ A desktop-based application designed to monitor screen time, track active app us
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/digital-wellbeing-tracker.git
+   git clone https://github.com/DivyanshM30/digital-wellbeing-tracker.git
 
 2. Navigate to the project directory:
 
