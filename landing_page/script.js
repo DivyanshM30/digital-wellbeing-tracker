@@ -10,58 +10,72 @@ document.addEventListener('DOMContentLoaded', function() {
 function handleDownload(platform) {
     switch (platform) {
         case 'windows':
-            // For Windows executable download
-            const windowsUrl = '/downloads/digital-wellness-tracker-windows.exe';
+            // For Windows executable download - point to actual file location
+            const windowsUrl = 'landing_page/downloads/digital-wellness-tracker-windows.exe.lnk';
+            // Try to download, if fails, show message
             downloadFile(windowsUrl, 'digital-wellness-tracker-windows.exe');
             break;
 
         case 'mac':
             // For macOS app download
-            const macUrl = '/downloads/digital-wellness-tracker-mac.dmg';
-            downloadFile(macUrl, 'digital-wellness-tracker-mac.dmg');
+            showNotification('macOS version coming soon!', 'info');
             break;
 
         case 'linux':
             // For Linux AppImage download
-            const linuxUrl = '/downloads/digital-wellness-tracker-linux.AppImage';
-            downloadFile(linuxUrl, 'digital-wellness-tracker-linux.AppImage');
+            showNotification('Linux version coming soon!', 'info');
             break;
 
         case 'source':
-            // Download Python source code
-            const sourceUrl = '/downloads/digital-wellness-tracker-source.zip';
-            downloadFile(sourceUrl, 'digital-wellness-tracker-source.zip');
+            // Redirect to GitHub repository
+            window.open('https://github.com/DivyanshM30/digital_wellness', '_blank');
             break;
     }
 }
 
 function downloadFile(url, filename) {
-    // Create a temporary link element
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    // Show download notification (optional)
-    showNotification(`Downloading ${filename}...`);
+    // Check if file exists first
+    fetch(url, { method: 'HEAD' })
+        .then(response => {
+            if (response.ok) {
+                // Create a temporary link element
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = filename;
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showNotification(`Downloading ${filename}...`);
+            } else {
+                showNotification('Download file not found. Please check the repository for the latest release.', 'info');
+            }
+        })
+        .catch(() => {
+            // If file doesn't exist, redirect to GitHub releases
+            showNotification('Redirecting to GitHub for download...', 'info');
+            setTimeout(() => {
+                window.open('https://github.com/DivyanshM30/digital_wellness/releases', '_blank');
+            }, 1000);
+        });
 }
 
-function showNotification(message) {
+function showNotification(message, type = 'success') {
     // Create notification element
     const notification = document.createElement('div');
+    const bgColor = type === 'info' ? '#f59e0b' : '#10b981';
     notification.style.cssText = `
         position: fixed;
         top: 20px;
         right: 20px;
-        background: #2563eb;
+        background: ${bgColor};
         color: white;
         padding: 1rem 1.5rem;
-        border-radius: 0.5rem;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        border-radius: 0.75rem;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
         z-index: 1000;
         animation: slideIn 0.3s ease;
+        font-weight: 500;
+        max-width: 300px;
     `;
     notification.textContent = message;
     
