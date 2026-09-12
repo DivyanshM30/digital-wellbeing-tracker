@@ -12,6 +12,7 @@ GitHub HEAD was checked during this review: commit `73234d37e788983555d313a3adba
 
 - Foreground process and window-title monitoring, sampled roughly once per second.
 - Overview with Start/Pause controls, a Today/history selector, reusable application rows, and a horizontal usage chart. Daily totals survive restart; an optional This session view shows the current run.
+- History with daily/weekly totals, a seven-day chart, previous/next date navigation, and a scrollable breakdown of every recorded app. Select an app to explore its trend.
 - Sidebar navigation, matching light/dark themes throughout, and an inline App Limits editor with durations entered in minutes (stored as seconds).
 - Voice alerts, desktop notifications, and optional application termination.
 - Light/dark themes and system-tray controls.
@@ -55,6 +56,16 @@ Run from the project directory: data paths resolve relative to the working direc
 6. Closing the window hides it when minimizing to the tray is enabled; tracking can continue. Use the tray's exit action to quit.
 
 ## Data and privacy
+
+### Browse your history
+
+Open **History** in the sidebar and choose **Daily** or **Weekly**. Use Previous/Next, Today, or enter a date as `YYYY-MM-DD` and press Enter or Go. Weeks run Monday through Sunday. Future dates cannot be selected.
+
+The chart shows the week containing the selected date. Click a day's bar to open its daily breakdown. The table includes all recorded apps, sorted by duration, with their percentage of the entire selected period. Selecting a row filters the summary and chart to that app; **Show all apps** restores the overall view.
+
+Weekly averages divide recorded usage by elapsed calendar days in the selected week (seven for completed weeks). Missing records are labeled **No data**, and future days are marked separately; an unrecorded day is not proof of zero screen use. The current day is partial while tracking continues. Saved history works immediately without a data migration. Hourly timelines are not available because history currently stores daily totals only.
+
+### Local files
 
 The desktop implementation stores data locally in plain-text files:
 

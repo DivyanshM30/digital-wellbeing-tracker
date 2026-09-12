@@ -88,6 +88,32 @@ class DailyUsageStore:
             return [{'date': day, 'app': app, 'duration': seconds}
                     for day, apps in sorted(self.days.items()) for app, seconds in apps.items()]
 
+    def history(self, anchor, weekly=False, today=None):
+        """Snapshot a calendar period; unrecorded and future days stay explicit."""
+        selected = datetime.strptime(anchor, '%Y-%m-%d').date()
+        today = today or datetime.now().date()
+        if selected > today:
+            raise ValueError('Choose today or an earlier date.')
+        monday = selected - timedelta(days=selected.weekday())
+        week = [monday + timedelta(days=index) for index in range(7)]
+        period = [day for day in week if day <= today] if weekly else [selected]
+        with self.lock:
+            chart = [{'date': day.isoformat(), 'future': day > today,
+                      'recorded': day.isoformat() in self.days,
+                      'apps': self.days.get(day.isoformat(), {}).copy() if day <= today else {}}
+                     for day in week]
+            apps = defaultdict(float)
+            recorded = 0
+            for day in period:
+                values = self.days.get(day.isoformat(), {})
+                recorded += day.isoformat() in self.days
+                for app, seconds in values.items():
+                    apps[app] += seconds
+        return {'apps': dict(sorted(apps.items(), key=lambda item: (-item[1], item[0]))),
+                'chart': chart, 'days': len(period), 'recorded': recorded,
+                'start': (monday if weekly else selected).isoformat(),
+                'end': (period[-1] if weekly else selected).isoformat()}
+
 
 class DigitalWellnessApp:
     def __init__(self, root):
@@ -156,15 +182,196 @@ class DigitalWellnessApp:
                       wraplength=650, justify="left").pack(anchor="w")
 
     def build_remaining_pages(self):
+        self.history_frame = ttk.Frame(self.notebook, style="Overview.TFrame")
         self.limits_frame = ttk.Frame(self.notebook, style="Overview.TFrame")
         self.smart_frame = ttk.Frame(self.notebook, style="Overview.TFrame")
         self.settings_frame = ttk.Frame(self.notebook, style="Overview.TFrame")
-        for page, title in ((self.limits_frame, "App Limits"), (self.smart_frame, "Insights"),
+        for page, title in ((self.history_frame, "History"), (self.limits_frame, "App Limits"), (self.smart_frame, "Insights"),
                             (self.settings_frame, "Settings")):
             self.notebook.add(page, text=title)
         self.build_limits_page()
         self.build_insights_page()
         self.build_settings_page()
+        self.build_history_page()
+
+    def build_history_page(self):
+        self.page_header(self.history_frame, "YOUR TIME OVER TIME", "History",
+                         "Explore a day or a week. Select an application to see its trend.")
+        self.history_date = tk.StringVar(value=datetime.now().date().isoformat())
+        self.history_mode = tk.StringVar(value="Daily")
+        self.history_app = None
+        self.history_anchor = self.history_date.get()
+        self.history_refresh_time = 0
+        controls = self.ui_frame(self.history_frame)
+        controls.pack(fill="x", padx=26, pady=(0, 12))
+        for mode in ("Daily", "Weekly"):
+            ttk.Radiobutton(controls, text=mode, value=mode, variable=self.history_mode,
+                            command=self.refresh_history).pack(side="left", padx=(0, 12))
+        ttk.Button(controls, text="← Previous", command=lambda: self.move_history(-1)).pack(side="left", padx=(8, 6))
+        self.history_date_entry = ttk.Entry(controls, textvariable=self.history_date, width=13)
+        self.history_date_entry.pack(side="left")
+        self.history_date_entry.bind("<Return>", lambda event: self.refresh_history())
+        ttk.Button(controls, text="Go", command=self.refresh_history).pack(side="left", padx=6)
+        self.history_next = ttk.Button(controls, text="Next →", command=lambda: self.move_history(1))
+        self.history_next.pack(side="left")
+        ttk.Button(controls, text="Today", command=self.history_today).pack(side="left", padx=6)
+        self.history_feedback = self.ui_label(self.history_frame,
+            "Enter a date as YYYY-MM-DD. Weeks run Monday to Sunday.", 9, color="muted")
+        self.history_feedback.pack(anchor="w", padx=26, pady=(0, 12))
+        summary = self.ui_frame(self.history_frame, "card", padx=18, pady=12)
+        summary.pack(fill="x", padx=26, pady=(0, 12))
+        self.history_heading = self.ui_label(summary, "", 15, "card")
+        self.history_heading.pack(anchor="w")
+        self.history_summary = self.ui_label(summary, "", 11, "card", "muted")
+        self.history_summary.pack(anchor="w", pady=(5, 0))
+        chart_card = self.ui_frame(self.history_frame, "card", padx=12, pady=8)
+        chart_card.pack(fill="x", padx=26, pady=(0, 12))
+        self.history_chart_title = self.ui_label(chart_card, "Daily totals for this week", 11, "card")
+        self.history_chart_title.pack(anchor="w", padx=6)
+        self.history_figure = plt.Figure(figsize=(8, 2), dpi=100)
+        self.history_ax = self.history_figure.add_subplot(111)
+        self.history_canvas = FigureCanvasTkAgg(self.history_figure, chart_card)
+        self.history_canvas.get_tk_widget().configure(height=195, highlightthickness=0)
+        self.history_canvas.get_tk_widget().pack(fill="x")
+        self.history_canvas.mpl_connect("button_press_event", self.history_chart_click)
+        bottom = self.ui_frame(self.history_frame, "card", padx=16, pady=12)
+        bottom.pack(fill="both", expand=True, padx=26, pady=(0, 16))
+        toolbar = self.ui_frame(bottom, "card")
+        toolbar.pack(fill="x", pady=(0, 10))
+        self.ui_label(toolbar, "All applications", 14, "card").pack(side="left")
+        self.history_clear = ttk.Button(toolbar, text="Show all apps", command=self.clear_history_app)
+        self.history_clear.pack(side="right")
+        table = self.ui_frame(bottom, "card")
+        table.pack(fill="both", expand=True)
+        self.history_tree = ttk.Treeview(table, columns=("app", "duration", "share"),
+                                         show="headings", selectmode="browse", height=4)
+        for column, title, width in (("app", "Application", 310), ("duration", "Time", 130),
+                                     ("share", "Share of period", 140)):
+            self.history_tree.heading(column, text=title)
+            self.history_tree.column(column, width=width)
+        scroll = ttk.Scrollbar(table, command=self.history_tree.yview)
+        self.history_tree.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        self.history_tree.pack(fill="both", expand=True)
+        self.history_tree.bind("<<TreeviewSelect>>", self.select_history_app)
+
+    def history_today(self):
+        self.history_date.set(datetime.now().date().isoformat())
+        self.refresh_history()
+
+    def move_history(self, direction):
+        anchor = datetime.strptime(self.history_anchor, "%Y-%m-%d").date()
+        step = 7 if self.history_mode.get() == "Weekly" else 1
+        target = min(datetime.now().date(), anchor + timedelta(days=direction * step))
+        self.history_date.set(target.isoformat())
+        self.refresh_history()
+
+    def clear_history_app(self):
+        self.history_app = None
+        self.history_tree.selection_remove(self.history_tree.selection())
+        self.draw_history()
+
+    def select_history_app(self, event=None):
+        selection = self.history_tree.selection()
+        if selection:
+            self.history_app = self.history_tree.item(selection[0], "values")[0]
+            self.draw_history()
+
+    def refresh_history(self):
+        if not hasattr(self, "palette"):
+            return
+        try:
+            snapshot = self.tracker.daily_store.history(
+                self.history_date.get().strip(), self.history_mode.get() == "Weekly")
+        except ValueError:
+            self.history_feedback.configure(text="Enter a valid date (YYYY-MM-DD), no later than today.")
+            return
+        self.history_anchor = datetime.strptime(self.history_date.get().strip(), '%Y-%m-%d').date().isoformat()
+        self.history_date.set(self.history_anchor)
+        self.history_data = snapshot
+        if self.history_app not in snapshot["apps"]:
+            self.history_app = None
+        total = sum(snapshot["apps"].values())
+        # Reuse tree rows so periodic refresh does not disturb scroll or focus.
+        expected = set(snapshot["apps"])
+        for item in self.history_tree.get_children():
+            if item not in expected:
+                self.history_tree.delete(item)
+        for index, (app, seconds) in enumerate(snapshot["apps"].items()):
+            values = (app, self.format_time(seconds), f"{seconds / total:.1%}" if total else "0%")
+            if self.history_tree.exists(app):
+                self.history_tree.item(app, values=values)
+                self.history_tree.move(app, "", index)
+            else:
+                self.history_tree.insert("", index, iid=app, values=values)
+        today = datetime.now().date()
+        anchor = datetime.strptime(self.history_anchor, "%Y-%m-%d").date()
+        current = anchor >= today
+        if self.history_mode.get() == "Weekly":
+            current = anchor + timedelta(days=6 - anchor.weekday()) >= today
+        self.history_next.configure(state="disabled" if current else "normal")
+        self.history_feedback.configure(text=(
+            f"{snapshot['recorded']} of {snapshot['days']} elapsed calendar days have records. "
+            "No record does not necessarily mean no screen use. Idle time is included."
+            if snapshot["apps"] else
+            "No recorded usage for this period. Choose another date or start tracking in Overview."))
+        self.draw_history()
+        self.history_refresh_time = time.monotonic()
+
+    def draw_history(self):
+        data = getattr(self, "history_data", None)
+        if not data:
+            return
+        scope = self.history_app or "All apps"
+        total = data["apps"].get(self.history_app, 0) if self.history_app else sum(data["apps"].values())
+        period = data["start"] if data["start"] == data["end"] else f"{data['start']} → {data['end']}"
+        self.history_heading.configure(text=f"{period} · {scope}")
+        average = total / data["days"]
+        self.history_summary.configure(text=f"Tracked time: {self.format_time(total)}"
+            + (f"     Daily average: {self.format_time(average)} (elapsed calendar days)"
+               if self.history_mode.get() == "Weekly" else ""))
+        self.history_clear.configure(state="normal" if self.history_app else "disabled")
+        self.history_chart_title.configure(text=f"{scope} · Daily totals for the selected week · Click a bar to view that day")
+        ax = self.history_ax
+        ax.clear()
+        self.history_figure.set_facecolor(self.palette["card"])
+        ax.set_facecolor(self.palette["card"])
+        self.history_canvas.get_tk_widget().configure(background=self.palette["card"])
+        values = [entry["apps"].get(self.history_app, 0) if self.history_app else sum(entry["apps"].values())
+                  for entry in data["chart"]]
+        ax.bar(range(7), [value / 3600 for value in values], width=.55,
+                      color=[self.palette["accent"] if entry["date"] == self.history_anchor
+                             else self.palette["muted"] for entry in data["chart"]])
+        labels = []
+        for index, entry in enumerate(data["chart"]):
+            date = datetime.strptime(entry["date"], "%Y-%m-%d")
+            labels.append(date.strftime("%a\n%d %b"))
+            if not entry["recorded"] or entry["future"]:
+                ax.text(index, .03, "Future" if entry["future"] else "No data",
+                         ha="center", fontsize=8, color=self.palette["muted"],
+                         transform=ax.get_xaxis_transform())
+        ax.set_xticks(range(7), labels)
+        ax.set_ylabel("Hours", color=self.palette["muted"], fontsize=9)
+        ax.set_ylim(0, max(1, max(values, default=0) / 3600 * 1.25))
+        ax.yaxis.set_major_locator(plt.MaxNLocator(3))
+        ax.tick_params(colors=self.palette["muted"], labelsize=9, length=0)
+        ax.yaxis.grid(True, color=self.palette["track"], linewidth=.6)
+        ax.set_axisbelow(True)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        self.history_figure.subplots_adjust(left=.07, right=.98, top=.95, bottom=.24)
+        self.history_canvas.draw_idle()
+
+    def history_chart_click(self, event):
+        if event.inaxes is not self.history_ax or event.xdata is None:
+            return
+        index = round(event.xdata)
+        if 0 <= index < 7:
+            entry = self.history_data["chart"][index]
+            if not entry["future"]:
+                self.history_mode.set("Daily")
+                self.history_date.set(entry["date"])
+                self.refresh_history()
 
     def build_sidebar(self):
         sidebar = self.ui_frame(self.app_shell, "card", width=170)
@@ -174,7 +381,7 @@ class DigitalWellnessApp:
         self.ui_label(sidebar, "digital wellbeing", 11, "card").pack(anchor="w", padx=20)
         self.ui_label(sidebar, "A little more intentional.", 9, "card", "muted").pack(anchor="w", padx=20, pady=(4, 30))
         self.nav_buttons = []
-        for index, name in enumerate(("Overview", "App Limits", "Insights", "Settings")):
+        for index, name in enumerate(("Overview", "History", "App Limits", "Insights", "Settings")):
             button = ttk.Button(sidebar, text=name, command=lambda i=index: self.notebook.select(i))
             button.pack(fill="x", padx=12, pady=5)
             self.nav_buttons.append(button)
@@ -187,6 +394,8 @@ class DigitalWellnessApp:
         for index, button in enumerate(self.nav_buttons):
             button.configure(style="Selected.TButton" if index == selected else "TButton")
         self.refresh_insight_coverage()
+        if hasattr(self, 'palette') and self.notebook.select() == str(self.history_frame):
+            self.refresh_history()
 
     def build_limits_page(self):
         self.page_header(self.limits_frame, "YOUR OWN BOUNDARIES", "App Limits",
@@ -647,6 +856,10 @@ class DigitalWellnessApp:
         self.canvas.get_tk_widget().configure(background=self.palette["card"], highlightthickness=0)
         self.update_progress_bars()
         self.update_stats_display()
+        if hasattr(self, 'history_data'):
+            self.draw_history()
+        else:
+            self.refresh_history()
         self.save_app_settings()
 
 
@@ -763,6 +976,10 @@ class DigitalWellnessApp:
         if now - self.last_chart_refresh >= 5:
             self.update_stats_display(usage)
             self.last_chart_refresh = now
+        if (hasattr(self, 'history_frame') and self.notebook.select() == str(self.history_frame)
+                and now - self.history_refresh_time >= 5
+                and self.history_date.get().strip() == self.history_anchor):
+            self.refresh_history()
         self.ui_timer = self.root.after(1000, self.update_ui)
 
     def update_progress_bars(self, usage=None):

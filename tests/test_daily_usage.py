@@ -19,7 +19,7 @@ from unittest.mock import Mock, patch
 tree = ast.parse((Path(__file__).resolve().parents[1] / 'main.py').read_text(encoding='utf-8'))
 namespace = dict(Path=Path, threading=threading, datetime=datetime, timedelta=timedelta,
                  tempfile=tempfile, math=math, json=json, os=os, time=time, queue=queue,
-                 sys=sys, __file__=str(Path(__file__).resolve().parents[1] / 'main.py'))
+                 sys=sys, defaultdict=defaultdict, __file__=str(Path(__file__).resolve().parents[1] / 'main.py'))
 classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
 exec(compile(ast.Module(body=classes, type_ignores=[]), 'main.py', 'exec'), namespace)
 Store = namespace['DailyUsageStore']
@@ -28,6 +28,46 @@ App = namespace['DigitalWellnessApp']
 
 
 class DailyUsageTests(unittest.TestCase):
+    def test_weekly_history_includes_all_apps_and_elapsed_days(self):
+        for index in range(8):
+            self.store.record(f'app{index}.exe', datetime(2026, 9, 7, 12).timestamp(), 60)
+        self.store.record('app0.exe', datetime(2026, 9, 9, 12).timestamp(), 120)
+        result = self.store.history('2026-09-09', weekly=True, today=datetime(2026, 9, 9).date())
+        self.assertEqual(result['start'], '2026-09-07')
+        self.assertEqual(result['end'], '2026-09-09')
+        self.assertEqual((result['days'], result['recorded']), (3, 2))
+        self.assertEqual(len(result['apps']), 8)
+        self.assertEqual(sum(result['apps'].values()), 600)
+        self.assertEqual(result['apps']['app0.exe'], 180)
+        self.assertFalse(result['chart'][1]['recorded'])
+        self.assertTrue(result['chart'][3]['future'])
+
+    def test_daily_history_does_not_include_other_days_in_total(self):
+        self.store.record('a.exe', self.start, 60)
+        self.store.record('a.exe', self.start - 86400, 120)
+        result = self.store.history('2026-09-12', today=datetime(2026, 9, 13).date())
+        self.assertEqual(result['apps'], {'a.exe': 60})
+        self.assertEqual(result['days'], 1)
+
+    def test_week_crosses_year_boundary_and_includes_sunday(self):
+        result = self.store.history('2027-01-03', weekly=True, today=datetime(2027, 1, 4).date())
+        self.assertEqual((result['start'], result['end'], result['days']), ('2026-12-28', '2027-01-03', 7))
+
+    def test_empty_history_and_invalid_date(self):
+        result = self.store.history('2026-09-12', today=datetime(2026, 9, 13).date())
+        self.assertEqual(result['apps'], {})
+        self.assertEqual(result['recorded'], 0)
+        for day in ('2026-02-30', '2026-09-14', 'not-a-date'):
+            with self.assertRaises(ValueError):
+                self.store.history(day, today=datetime(2026, 9, 13).date())
+
+    def test_history_snapshot_cannot_mutate_storage(self):
+        self.store.record('a.exe', self.start, 60)
+        result = self.store.history('2026-09-12', today=datetime(2026, 9, 13).date())
+        result['apps']['a.exe'] = 999
+        result['chart'][5]['apps']['a.exe'] = 999
+        self.assertEqual(self.store.usage('2026-09-12'), {'a.exe': 60})
+
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory()
         self.addCleanup(self.temporary.cleanup)
