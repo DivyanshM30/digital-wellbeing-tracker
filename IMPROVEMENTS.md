@@ -20,7 +20,9 @@ Use monotonic time for durations and wall-clock timestamps for reporting. Split 
 
 ## 2. Make threading and shutdown reliable
 
-- **UI thread ownership:** track calls gui.update_stats_display directly from the worker; that method changes a Matplotlib/Tk canvas. Tray callbacks also invoke GUI methods. Send events through a queue drained by a main-thread root.after callback.
+Overview redesign update: the tracking worker no longer renders the chart. A single UI timer updates the dashboard, and tray actions are dispatched through a queue. Usage rows are reused; totals are explicitly labeled as session totals. The remaining worker lifecycle and alert-thread issues below still need work.
+
+- **UI thread ownership:** dashboard rendering and tray callbacks now run through the main thread. Remaining alert code still reads Tk variables from the tracking worker; replace those reads with synchronized plain-value settings as part of the broader threading fix.
 - **Stop/start races:** GUI-side stop_tracking logs and clears the same state used by the worker, without a join or lock. exit_app can destroy the UI while work continues. Let the worker finalize exactly once after a stop event, then complete shutdown. Test rapid stop/start and exit during alerts.
 - **Blocking work:** clustering runs synchronously on the GUI thread, and speech runAndWait blocks its caller. Use separate analytics and speech workers and return results through the UI queue.
 

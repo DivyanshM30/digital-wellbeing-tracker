@@ -12,6 +12,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox, simpledialog
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import threading
+import queue
 import sys
 import pystray
 from PIL import Image, ImageDraw
@@ -24,10 +25,16 @@ class DigitalWellnessApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Digital Wellness Tracker")
-        self.root.geometry("800x600")
-        self.root.minsize(800, 600)
+        self.root.geometry("1100x820")
+        self.root.minsize(960, 800)
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
+        self.tracking_active = False
+        self.tracking_thread = None
+        self.ui_actions = queue.Queue()
+        self.closing = False
+        self.ui_timer = None
+        self.last_chart_refresh = 0
         self.dark_mode = tk.BooleanVar(value=False)
         
         self.tracker = ScreenTimeTracker(self)
@@ -36,42 +43,19 @@ class DigitalWellnessApp:
         
         self.setup_system_tray()
 
-        self.tracking_active = False
-        self.tracking_thread = None
-        
         self.toggle_theme()
         
         self.schedule_auto_analysis()
+        self.update_ui()
 
     def create_widgets(self):
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        self.dashboard_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.dashboard_frame, text="Dashboard")
-        
-        self.current_app_frame = ttk.LabelFrame(self.dashboard_frame, text="Currently Tracking")
-        self.current_app_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        self.current_app_label = ttk.Label(self.current_app_frame, text="Not tracking any app")
-        self.current_app_label.pack(side=tk.LEFT, padx=10, pady=5)
-        
-        self.start_stop_button = ttk.Button(self.current_app_frame, text="Start Tracking", command=self.toggle_tracking)
-        self.start_stop_button.pack(side=tk.RIGHT, padx=10, pady=5)
-        
-        self.progress_frame = ttk.LabelFrame(self.dashboard_frame, text="Today's Usage")
-        self.progress_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        self.progress_bars = {}
-        
-        self.stats_frame = ttk.Frame(self.dashboard_frame)
-        self.stats_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        self.figure = plt.Figure(figsize=(5, 4), dpi=100)
-        self.ax = self.figure.add_subplot(111)
-        self.canvas = FigureCanvasTkAgg(self.figure, self.stats_frame)
-        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
-        
+        self.dashboard_frame = ttk.Frame(self.notebook, style="Overview.TFrame")
+        self.notebook.add(self.dashboard_frame, text="Overview")
+        self.build_overview()
+
         self.limits_frame = ttk.Frame(self.notebook)
         self.notebook.add(self.limits_frame, text="App Limits")
         
@@ -130,7 +114,141 @@ class DigitalWellnessApp:
         
         self.load_app_settings()
         self.update_limits_display()
-        self.update_stats_display()
+
+    def build_overview(self):
+        """Build a dashboard whose widgets survive each tracking refresh."""
+        self.overview_widgets = []
+        self.overview_rows = []
+        self.dashboard_frame.columnconfigure(0, weight=1)
+        self.dashboard_frame.rowconfigure(3, weight=1)
+
+        def frame(parent, surface="paper", **kwargs):
+            widget = tk.Frame(parent, **kwargs)
+            self.overview_widgets.append((widget, {"background": surface}))
+            return widget
+
+        def label(parent, text="", size=11, surface="paper", color="ink", **kwargs):
+            widget = tk.Label(parent, text=text, font=("Segoe UI", size),
+                              anchor="w", **kwargs)
+            self.overview_widgets.append(
+                (widget, {"background": surface, "foreground": color}))
+            return widget
+
+        heading = frame(self.dashboard_frame)
+        heading.grid(row=0, column=0, sticky="ew", padx=26, pady=(20, 14))
+        label(heading, "YOUR TIME, WITH INTENTION", 9, color="muted").pack(anchor="w")
+        label(heading, "Overview", 27).pack(anchor="w", pady=(4, 0))
+        label(heading, "A little awareness goes a long way.", 11,
+              color="muted").pack(anchor="w")
+
+        tracking = frame(self.dashboard_frame, "card", padx=18, pady=14)
+        tracking.grid(row=1, column=0, sticky="ew", padx=26, pady=(0, 14))
+        tracking.columnconfigure(0, weight=1)
+        self.tracking_badge = label(tracking, "READY TO BEGIN", 9, "card", "accent")
+        self.tracking_badge.grid(row=0, column=0, sticky="w")
+        self.current_app_label = label(tracking, "Make a little room for yourself.", 14, "card")
+        self.current_app_label.grid(row=1, column=0, sticky="w", pady=(5, 0))
+        self.current_window_label = label(tracking, "Start tracking to see your application usage.",
+                                          10, "card", "muted")
+        self.current_window_label.grid(row=2, column=0, sticky="w", pady=(3, 0))
+        self.start_stop_button = tk.Button(
+            tracking, text="Start Tracking", command=self.toggle_tracking,
+            font=("Segoe UI", 11, "bold"), relief="flat", borderwidth=0,
+            padx=22, pady=12, cursor="hand2")
+        self.overview_widgets.append((self.start_stop_button, {
+            "background": "accent", "foreground": "button_text",
+            "activebackground": "ink", "activeforeground": "paper"}))
+        self.start_stop_button.grid(row=0, column=1, rowspan=3, padx=(15, 0))
+
+        summaries = frame(self.dashboard_frame)
+        summaries.grid(row=2, column=0, sticky="ew", padx=26, pady=(0, 16))
+        self.summary_values = []
+        self.summary_details = []
+        for column, (title, value, detail) in enumerate((
+                ("THIS SESSION", "00:00:00", "Foreground time · includes idle time"),
+                ("MOST USED", "—", "Your most-used app will appear here"),
+                ("LIMIT CHECK-IN", "0 apps", "Approaching or over their limit"))):
+            summaries.columnconfigure(column, weight=1, uniform="summary")
+            card = frame(summaries, "card", padx=14, pady=12)
+            card.grid(row=0, column=column, sticky="nsew",
+                      padx=(0 if column == 0 else 5, 0 if column == 2 else 5))
+            label(card, title, 9, "card", "muted").pack(anchor="w")
+            number = label(card, value, 20, "card")
+            number.pack(anchor="w", pady=(6, 4))
+            caption = label(card, detail, 9, "card", "muted", wraplength=235,
+                            justify="left")
+            caption.pack(anchor="w")
+            self.summary_values.append(number)
+            self.summary_details.append(caption)
+
+        body = frame(self.dashboard_frame)
+        body.grid(row=3, column=0, sticky="nsew", padx=26, pady=(0, 12))
+        body.columnconfigure(0, weight=1, uniform="body")
+        body.columnconfigure(1, weight=1, uniform="body")
+        body.rowconfigure(0, weight=1)
+        self.progress_frame = frame(body, "card", padx=16, pady=14)
+        self.progress_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 7))
+        label(self.progress_frame, "Application activity", 14, "card").pack(anchor="w")
+        label(self.progress_frame, "Top 5 · Bars show share of session or limit used",
+              9, "card", "muted", wraplength=350, justify="left").pack(anchor="w", pady=(3, 10))
+        self.empty_usage = label(self.progress_frame,
+            "A fresh start.\n\nStart tracking, then switch between apps.\nYour session will take shape here.",
+            11, "card", "muted", justify="left", wraplength=320)
+        self.empty_usage.pack(anchor="w", pady=25)
+        for _ in range(5):
+            row = frame(self.progress_frame, "card")
+            top = frame(row, "card")
+            top.pack(fill="x")
+            name = label(top, "", 10, "card")
+            name.pack(side="left")
+            duration = label(top, "", 10, "card", "muted")
+            duration.pack(side="right")
+            bar = tk.Canvas(row, height=5, highlightthickness=0, borderwidth=0)
+            self.overview_widgets.append((bar, {"background": "track"}))
+            fill = bar.create_rectangle(0, 0, 0, 5, width=0)
+            bar.pack(fill="x", pady=(6, 3))
+            detail = label(row, "", 9, "card", "muted")
+            detail.pack(anchor="w")
+            item = {"frame": row, "name": name, "duration": duration,
+                    "bar": bar, "fill": fill, "detail": detail, "fraction": 0, "color": "accent"}
+            bar.bind("<Configure>", lambda event, item=item: self.paint_usage_bar(item))
+            self.overview_rows.append(item)
+
+        self.stats_frame = frame(body, "card", padx=10, pady=14)
+        self.stats_frame.grid(row=0, column=1, sticky="nsew", padx=(7, 0))
+        label(self.stats_frame, "Where your time goes", 14, "card").pack(anchor="w", padx=6)
+        label(self.stats_frame, "Top 5 applications · minutes this session", 9,
+              "card", "muted").pack(anchor="w", padx=6, pady=(3, 0))
+        self.figure = plt.Figure(figsize=(4, 2.8), dpi=100)
+        self.ax = self.figure.add_subplot(111)
+        self.canvas = FigureCanvasTkAgg(self.figure, self.stats_frame)
+        self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
+        label(self.dashboard_frame,
+              "This session spans pauses until you quit. Closing the window may keep tracking in the tray.",
+              9, color="muted").grid(row=4, column=0, sticky="w", padx=26, pady=(0, 12))
+
+    def overview_usage(self):
+        """Snapshot session values without adding empty entries to tracker state."""
+        usage = {app: max(0, data["time"])
+                 for app, data in self.tracker.session_data.copy().items()}
+        current_app = self.tracker.current_app
+        started = self.tracker.start_time
+        if self.tracking_active and current_app and started is not None:
+            usage[current_app] = usage.get(current_app, 0) + max(0, time.time() - started)
+        return dict(sorted(((app, seconds) for app, seconds in usage.items() if seconds > 0),
+                           key=lambda item: (-item[1], item[0])))
+
+    @staticmethod
+    def short_app_name(app, length=24):
+        name = app[:-4] if app.lower().endswith(".exe") else app
+        return name if len(name) <= length else name[:length - 1] + "…"
+
+    def paint_usage_bar(self, row):
+        if not hasattr(self, "palette"):
+            return
+        row["bar"].coords(row["fill"], 0, 0,
+                          row["bar"].winfo_width() * row["fraction"], 5)
+        row["bar"].itemconfigure(row["fill"], fill=self.palette[row["color"]])
 
     def load_app_settings(self):
         """Load application settings"""
@@ -162,36 +280,34 @@ class DigitalWellnessApp:
             print(f"Error saving app settings: {e}")
 
     def toggle_theme(self):
-        """Toggle between light and dark mode"""
-        if self.dark_mode.get():
-            sv_ttk.set_theme("dark")
-            self.figure.set_facecolor('#2d2d2d')
-            self.ax.set_facecolor('#2d2d2d')
-            self.ax.tick_params(colors='white')
-            self.ax.xaxis.label.set_color('white')
-            self.ax.yaxis.label.set_color('white')
-            self.ax.title.set_color('white')
-        else:
-            sv_ttk.set_theme("light")
-            self.figure.set_facecolor('#f0f0f0')
-            self.ax.set_facecolor('#f0f0f0')
-            self.ax.tick_params(colors='black')
-            self.ax.xaxis.label.set_color('black')
-            self.ax.yaxis.label.set_color('black')
-            self.ax.title.set_color('black')
-        
-        self.canvas.draw()
-        
+        """Apply the same quiet palette to the dashboard and its chart."""
+        sv_ttk.set_theme("dark" if self.dark_mode.get() else "light")
+        self.palette = ({
+            "paper": "#202b25", "card": "#2b3830", "ink": "#eef2e7",
+            "muted": "#b7c4b7", "accent": "#b4cc95", "track": "#465447",
+            "warning": "#e1b768", "danger": "#eb9387", "button_text": "#202b25",
+        } if self.dark_mode.get() else {
+            "paper": "#f6f5ef", "card": "#ffffff", "ink": "#263c32",
+            "muted": "#607062", "accent": "#526f43", "track": "#e6ebdf",
+            "warning": "#a87526", "danger": "#b95343", "button_text": "#ffffff",
+        })
+        ttk.Style().configure("Overview.TFrame", background=self.palette["paper"])
+        for widget, options in self.overview_widgets:
+            widget.configure(**{key: self.palette[value] for key, value in options.items()})
+        self.canvas.get_tk_widget().configure(background=self.palette["card"], highlightthickness=0)
+        self.update_progress_bars()
+        self.update_stats_display()
         self.save_app_settings()
+
 
     def setup_system_tray(self):
         """Setup the system tray icon and menu"""
         icon_image = self.create_tray_icon()
         
         menu_items = (
-            pystray.MenuItem('Show', self.show_window),
-            pystray.MenuItem('Start/Stop Tracking', self.toggle_tracking_from_tray),
-            pystray.MenuItem('Exit', self.exit_app)
+            pystray.MenuItem('Show', lambda icon, item: self.ui_actions.put(self.show_window)),
+            pystray.MenuItem('Start/Stop Tracking', lambda icon, item: self.ui_actions.put(self.toggle_tracking_from_tray)),
+            pystray.MenuItem('Exit', lambda icon, item: self.ui_actions.put(self.exit_app))
         )
         
         self.tray_icon = pystray.Icon("digital_wellness", icon_image, "Digital Wellness", menu_items)
@@ -228,9 +344,11 @@ class DigitalWellnessApp:
         """Exit the application from the system tray"""
         if self.tracking_active:
             self.stop_tracking()
+        self.closing = True
+        if self.ui_timer is not None:
+            self.root.after_cancel(self.ui_timer)
         self.tray_icon.stop()
         self.root.destroy()
-        sys.exit(0)
 
     def toggle_tracking(self):
         if not self.tracking_active:
@@ -243,14 +361,14 @@ class DigitalWellnessApp:
             return  # Already tracking
             
         self.tracking_active = True
-        self.start_stop_button.config(text="Stop Tracking")
+        self.start_stop_button.config(text="Pause Tracking")
         self.status_bar.config(text="Tracking active...")
         
         self.tracking_thread = threading.Thread(target=self.tracker.track)
         self.tracking_thread.daemon = True
         self.tracking_thread.start()
         
-        self.root.after(1000, self.update_ui)
+        self.last_chart_refresh = 0
 
     def stop_tracking(self):
         if self.tracking_active:
@@ -258,139 +376,115 @@ class DigitalWellnessApp:
             self.start_stop_button.config(text="Start Tracking")
             self.status_bar.config(text="Tracking stopped")
             self.tracker.stop_tracking()
+            self.last_chart_refresh = 0
 
     def update_ui(self):
-        if not self.tracking_active:
-            return
-            
-        if self.tracker.current_app:
-            app_name = self.tracker.current_app
-            window_title = self.tracker.current_window
-            truncated_title = window_title[:40] + "..." if len(window_title) > 40 else window_title
-            
-            current_time = time.time()
-            elapsed = current_time - self.tracker.start_time if self.tracker.start_time else 0
-            total_time = self.tracker.session_data[app_name]['time'] + elapsed
-            
-            limit = self.tracker.app_limits.get(app_name, 0)
-            if limit > 0:
-                percent = min(100, (total_time / limit) * 100)
-                status_text = f"Currently using: {app_name} - {truncated_title} - {self.format_time(total_time)} / {self.format_time(limit)} ({percent:.0f}%)"
-            else:
-                status_text = f"Currently using: {app_name} - {truncated_title} - {self.format_time(total_time)}"
-                
-            self.current_app_label.config(text=status_text)
+        """One main-thread timer owns all Overview widget and chart updates."""
+        for _ in range(20):
+            try:
+                action = self.ui_actions.get_nowait()
+            except queue.Empty:
+                break
+            action()
+            if self.closing:
+                return
+        usage = self.overview_usage()
+        if self.tracking_active:
+            self.tracking_badge.config(text="TRACKING ACTIVE")
+            app = self.tracker.current_app
+            self.current_app_label.config(
+                text=self.short_app_name(app, 42) if app else "Waiting for an active application…")
+            title = self.tracker.current_window or "Foreground application monitoring is running."
+            self.current_window_label.config(text=title[:65] + ("…" if len(title) > 65 else ""))
         else:
-            self.current_app_label.config(text="Not tracking any app")
-        
-        self.update_progress_bars()
-        
-        self.root.after(1000, self.update_ui)
+            self.tracking_badge.config(text="TRACKING PAUSED" if usage else "READY TO BEGIN")
+            self.current_app_label.config(text="A moment to step away." if usage
+                                          else "Make a little room for yourself.")
+            self.current_window_label.config(text="Your session totals stay here until you quit." if usage
+                                              else "Start tracking to see your application usage.")
+        self.update_progress_bars(usage)
+        now = time.monotonic()
+        if now - self.last_chart_refresh >= 5:
+            self.update_stats_display(usage)
+            self.last_chart_refresh = now
+        self.ui_timer = self.root.after(1000, self.update_ui)
 
-    def update_progress_bars(self):
-        for widget in self.progress_frame.winfo_children():
-            widget.destroy()
-        
-        app_usage = []
-        for app, data in self.tracker.session_data.items():
-            if app == self.tracker.current_app and self.tracker.start_time:
-                elapsed = time.time() - self.tracker.start_time
-                usage = data['time'] + elapsed
-            else:
-                usage = data['time']
-            app_usage.append((app, usage))
-        
-        for app, usage in self.tracker.total_usage.items():
-            if app not in [a[0] for a in app_usage]:
-                app_usage.append((app, 0))  # Only count session time in progress bars
-        
-        app_usage.sort(key=lambda x: x[1], reverse=True)
-        
-        for i, (app, usage) in enumerate(app_usage[:5]):
-            app_frame = ttk.Frame(self.progress_frame)
-            app_frame.pack(fill=tk.X, padx=5, pady=2)
-            
+    def update_progress_bars(self, usage=None):
+        usage = self.overview_usage() if usage is None else usage
+        total = sum(usage.values())
+        self.summary_values[0].config(text=self.format_time(total))
+        most_used = next(iter(usage), None)
+        self.summary_values[1].config(
+            text=self.short_app_name(most_used, 18) if most_used else "—")
+        self.summary_details[1].config(
+            text=f"{self.format_time(usage[most_used])} · {usage[most_used] / total:.0%} of session"
+            if most_used else "Your most-used app will appear here")
+        nearing = sum(1 for app, seconds in usage.items()
+                      if self.tracker.app_limits.get(app, 0) > 0
+                      and seconds >= self.tracker.warning_times.get(
+                          app, self.tracker.app_limits[app] * .8))
+        self.summary_values[2].config(text=f"{nearing} app{'s' if nearing != 1 else ''}")
+        entries = list(usage.items())[:5]
+        if entries:
+            self.empty_usage.pack_forget()
+        else:
+            self.empty_usage.pack(anchor="w", pady=25)
+        for index, row in enumerate(self.overview_rows):
+            if index >= len(entries):
+                row["frame"].pack_forget()
+                continue
+            app, seconds = entries[index]
+            row["frame"].pack(fill="x", pady=(0, 6))
+            row["name"].config(text=self.short_app_name(app))
+            row["duration"].config(text=self.format_time(seconds))
             limit = self.tracker.app_limits.get(app, 0)
-            
             if limit > 0:
-                label_text = f"{app}: {self.format_time(usage)} / {self.format_time(limit)}"
-                progress = min(100, (usage / limit) * 100)
+                fraction = seconds / limit
+                warning = self.tracker.warning_times.get(app, limit * .8)
+                row["color"] = "danger" if seconds >= limit else "warning" if seconds >= warning else "accent"
+                detail = f"{fraction:.0%} of {self.format_time(limit)} limit"
+                if seconds >= limit:
+                    detail += " · Limit reached"
             else:
-                label_text = f"{app}: {self.format_time(usage)}"
-                progress = min(100, usage / 3600 * 100)  # As percentage of 1 hour if no limit
-            
-            ttk.Label(app_frame, text=label_text, width=30, anchor=tk.W).pack(side=tk.LEFT)
-            
-            style_name = f"color{i}.Horizontal.TProgressbar"
-            ttk.Style().configure(style_name, background=self.get_progress_color(progress))
-            
-            progress_bar = ttk.Progressbar(app_frame, style=style_name, length=300, mode="determinate")
-            progress_bar["value"] = progress
-            progress_bar.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
+                fraction = seconds / total if total else 0
+                row["color"] = "accent"
+                detail = f"{fraction:.0%} of session · No limit"
+            row["fraction"] = min(1, max(0, fraction))
+            row["detail"].config(text=detail)
+            self.paint_usage_bar(row)
 
-    def get_progress_color(self, percentage):
-        if percentage > 80:
-            return "#FF5733"  # Red
-        elif percentage > 60:
-            return "#FFC300"  # Yellow
-        else:
-            return "#4CAF50"  # Green
-
-    def update_stats_display(self):
+    def update_stats_display(self, usage=None):
+        usage = self.overview_usage() if usage is None else usage
         self.ax.clear()
-        
-        apps = []
-        times = []
-        
-        usage_data = defaultdict(float)
-        for app, data in self.tracker.session_data.items():
-            if app == self.tracker.current_app and self.tracker.start_time:
-                elapsed = time.time() - self.tracker.start_time
-                usage_data[app] = data['time'] + elapsed
-            else:
-                usage_data[app] = data['time']
-        
-        for app, usage in self.tracker.total_usage.items():
-            if app not in usage_data:
-                usage_data[app] = 0  # Only count session time in chart
-        
-        for app, time_spent in sorted(usage_data.items(), key=lambda x: x[1], reverse=True)[:8]:
-            apps.append(app)
-            times.append(time_spent / 60)  # Convert to minutes for readability
-        
-        if apps:
-            bars = self.ax.bar(apps, times, color='skyblue')
-            
-            if self.dark_mode.get():
-                self.ax.set_facecolor('#2d2d2d')
-                self.ax.tick_params(colors='white')
-                self.ax.xaxis.label.set_color('white')
-                self.ax.yaxis.label.set_color('white')
-                self.ax.title.set_color('white')
-            else:
-                self.ax.set_facecolor('#f0f0f0')
-                self.ax.tick_params(colors='black')  
-                self.ax.xaxis.label.set_color('black')
-                self.ax.yaxis.label.set_color('black')
-                self.ax.title.set_color('black')
-            
-            self.ax.set_title('Application Usage')
-            self.ax.set_xlabel('Applications')
-            self.ax.set_ylabel('Time (minutes)')
-
-            x_positions = range(len(apps))  # get positions for each bar
-            self.ax.set_xticks(x_positions)  # explicitly set ticks
-            self.ax.set_xticklabels(apps, rotation=45, ha='right')  # now set labels
-            
-            for bar in bars:
-                height = bar.get_height()
-                self.ax.text(bar.get_x() + bar.get_width()/2., height + 0.3,
-                        f'{height:.1f}', ha='center', va='bottom',
-                        color='white' if self.dark_mode.get() else 'black')
-            self.figure.set_size_inches(12, 6)
-            self.figure.tight_layout()
-            
-        self.canvas.draw()
+        self.figure.set_facecolor(self.palette["card"])
+        self.ax.set_facecolor(self.palette["card"])
+        entries = list(usage.items())[:5]
+        for spine in self.ax.spines.values():
+            spine.set_visible(False)
+        if not entries:
+            self.ax.set_axis_off()
+            self.ax.text(.5, .5, "Your time, in perspective.\nStart tracking to build your chart.",
+                         ha="center", va="center", transform=self.ax.transAxes,
+                         color=self.palette["muted"], fontsize=10, linespacing=1.8)
+            self.figure.subplots_adjust(left=.08, right=.95, top=.95, bottom=.12)
+        else:
+            self.ax.set_axis_on()
+            values = [seconds / 60 for _, seconds in entries]
+            positions = list(range(len(entries)))
+            self.ax.barh(positions, values, color=self.palette["accent"], height=.48)
+            self.ax.set_yticks(positions)
+            self.ax.set_yticklabels([self.short_app_name(app, 16) for app, _ in entries], fontsize=9)
+            self.ax.invert_yaxis()
+            self.ax.set_xlim(0, max(values) * 1.3)
+            self.ax.tick_params(axis="both", colors=self.palette["muted"], length=0, labelsize=8)
+            self.ax.xaxis.set_major_locator(plt.MaxNLocator(4))
+            self.ax.xaxis.grid(True, color=self.palette["track"], linewidth=.6)
+            self.ax.set_axisbelow(True)
+            for index, value in enumerate(values):
+                self.ax.text(value + max(values) * .025, index, f"{value:.1f}",
+                             va="center", color=self.palette["ink"], fontsize=9)
+            self.figure.subplots_adjust(left=.29, right=.96, top=.94, bottom=.13)
+        self.canvas.draw_idle()
 
     def update_limits_display(self):
         for item in self.limits_tree.get_children():
@@ -864,8 +958,7 @@ class ScreenTimeTracker:
                 
                 self.warned_apps[app_name] = False
                 
-                if self.gui:
-                    self.gui.update_stats_display()
+                # Overview rendering is owned by the GUI timer.
                     
             else:
                 elapsed = time.time() - self.start_time

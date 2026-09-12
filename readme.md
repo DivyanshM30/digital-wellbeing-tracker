@@ -11,7 +11,7 @@ GitHub HEAD was checked during this review: commit `73234d37e788983555d313a3adba
 ## Features
 
 - Foreground process and window-title monitoring, sampled roughly once per second.
-- Dashboard with current application usage, limit progress, and a usage chart.
+- Overview with Start/Pause controls, session summary cards, reusable application rows, and a horizontal usage chart. Light and dark palettes match the project's calm visual style.
 - Per-application limits and warning thresholds, entered in seconds.
 - Voice alerts, desktop notifications, and optional application termination.
 - Light/dark themes and system-tray controls.
@@ -120,6 +120,14 @@ Expected output: `dist/DigitalWellbeingTracker.exe`. This recipe was not validat
 
 ## Development status
 
-No automated tests or CI configuration were found. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for correctness issues and proposed validation scenarios.
+Run the focused Overview regression tests with:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
+
+These checks cover session summaries, first-app visibility, paused totals, limit states, row reuse, and the UI timer without starting monitoring. They do not replace a Windows visual check. The Overview starts at 1100 × 820 with a minimum window size of 960 × 800; charts refresh every five seconds and usage rows every second.
+
+CI is not configured. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for remaining correctness issues and proposed validation scenarios.
 
 No repository-level license file was found. Add an explicit license before presenting the project as licensed for reuse.
