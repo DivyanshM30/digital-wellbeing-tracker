@@ -4,6 +4,7 @@ Load the actual application class via AST so these focused tests also run when
 the optional desktop dependencies are unavailable. They do not verify layout.
 """
 import ast
+import math
 from collections import defaultdict
 from pathlib import Path
 import queue
@@ -16,12 +17,43 @@ from unittest.mock import Mock, patch
 source = ast.parse((Path(__file__).resolve().parents[1] / "main.py").read_text(encoding="utf-8"))
 app_class = next(node for node in source.body
                  if isinstance(node, ast.ClassDef) and node.name == "DigitalWellnessApp")
-namespace = {"time": time, "queue": queue}
+namespace = {"time": time, "queue": queue, "math": math}
 exec(compile(ast.Module(body=[app_class], type_ignores=[]), "main.py", "exec"), namespace)
 App = namespace["DigitalWellnessApp"]
 
 
 class OverviewTests(unittest.TestCase):
+    def test_app_filter_preserves_draft_and_filters_case_insensitively(self):
+        self.app.editing_limit = None
+        self.app.app_choices = ['chrome.exe', 'code.exe', 'explorer.exe']
+        self.app.limit_app_var = Mock()
+        self.app.limit_app_var.get.return_value = ' CHR '
+        self.app.limit_app_entry = Mock()
+        self.app.limit_form_message = Mock()
+        self.app.filter_app_choices()
+        self.app.limit_app_entry.configure.assert_called_once_with(values=['chrome.exe'])
+        self.app.limit_app_var.set.assert_not_called()
+
+    def test_filter_does_not_interfere_with_editing_or_arrow_navigation(self):
+        self.app.editing_limit = 'chrome.exe'
+        self.app.limit_app_entry = Mock()
+        self.app.filter_app_choices()
+        self.app.editing_limit = None
+        self.app.filter_app_choices(SimpleNamespace(keysym='Down'))
+        self.app.limit_app_entry.configure.assert_not_called()
+
+    def test_limit_form_converts_minutes_and_normalizes_process_name(self):
+        self.assertEqual(App.parse_limit_form(' Chrome.EXE ', '60', '48'), ('chrome.exe', 3600, 2880))
+        self.assertEqual(App.parse_limit_form('editor.exe', '1.5', '.5'), ('editor.exe', 90, 30))
+
+    def test_limit_form_rejects_invalid_or_inconsistent_values(self):
+        for app, limit, warning in (('', '60', '48'), ('a', 'x', '1'), ('a', 'nan', '1'),
+                                     ('a', 'inf', '1'), ('a', '-2', '1'), ('a', '5', '5'),
+                                     ('a', '5', '6'), ('a', '5', '0')):
+            with self.subTest(app=app, limit=limit, warning=warning):
+                with self.assertRaises(ValueError):
+                    App.parse_limit_form(app, limit, warning)
+
     def setUp(self):
         self.app = App.__new__(App)
         self.app.tracking_active = True

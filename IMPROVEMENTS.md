@@ -24,10 +24,10 @@ Overview redesign update: the tracking worker no longer renders the chart. A sin
 
 ## 3. Correct settings and limit behavior
 
-- save_app_settings is called from toggle_theme, but the other preference checkboxes have no save callback and exit_app does not save settings. Changing voice or termination preferences without subsequently toggling the theme can lose those changes on exit. Save on each change and shutdown using atomic replacement; test relaunch.
+- Settings now save on each preference change. Atomic configuration writes and a stable per-user settings location remain useful follow-up work.
 - Automatic termination defaults to enabled. Default to reminders, make termination an explicit choice, try graceful closure first, and exclude critical processes and the tracker.
 - enforce_limit selects the first matching process name, which may differ from the foreground process in a multi-process app. Retain the intended process identity and handle process exit before enforcement.
-- Limit dialogs accept negative values and inconsistent thresholds, and manual names are not normalized. Enforce 0 < warning < limit and normalize names.
+- The inline limit form now normalizes names, accepts minute-based durations, and validates 0 < warning < limit. Invalid or duplicate additions show inline feedback.
 - Warning state is now keyed by date and app rather than focus changes. Persist warning state or add reminder cooldowns across restarts in a later change.
 
 ## 4. Fix insights before expanding the ML

@@ -114,6 +114,27 @@ class DailyUsageTests(unittest.TestCase):
         app.tracker = SimpleNamespace(daily_store=Store(self.path), session_data={})
         self.assertEqual(app.overview_usage(), {'editor.exe': 60})
 
+    def test_friendly_date_selection_maps_to_history(self):
+        self.store.record('editor.exe', self.start, 60)
+        app = App.__new__(App)
+        app.day_var = SimpleNamespace(get=lambda: 'Sat, 12 Sep 2026')
+        app.day_lookup = {'Sat, 12 Sep 2026': '2026-09-12'}
+        app.tracker = SimpleNamespace(daily_store=self.store)
+        self.assertEqual(app.overview_usage(), {'editor.exe': 60})
+
+    def test_date_choices_are_not_reconfigured_on_every_timer_tick(self):
+        app = App.__new__(App)
+        app.day_var = Mock()
+        app.day_var.get.return_value = 'Today'
+        app.day_lookup = {}
+        app.day_choices = None
+        app.day_picker = Mock()
+        app.tracker = SimpleNamespace(daily_store=self.store)
+        app.refresh_day_choices()
+        app.refresh_day_choices()
+        app.day_picker.configure.assert_called_once()
+        app.day_var.set.assert_not_called()
+
     def test_worker_checkpoints_switch_and_final_interval_once(self):
         tracker = self.tracker()
         tracker.current_app = None

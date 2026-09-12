@@ -12,7 +12,7 @@ GitHub HEAD was checked during this review: commit `73234d37e788983555d313a3adba
 
 - Foreground process and window-title monitoring, sampled roughly once per second.
 - Overview with Start/Pause controls, a Today/history selector, reusable application rows, and a horizontal usage chart. Daily totals survive restart; an optional This session view shows the current run.
-- Per-application limits and warning thresholds, entered in seconds.
+- Sidebar navigation, matching light/dark themes throughout, and an inline App Limits editor with durations entered in minutes (stored as seconds).
 - Voice alerts, desktop notifications, and optional application termination.
 - Light/dark themes and system-tray controls.
 - Local JSON settings and atomic daily usage history, saved during tracking and on pause/exit.
@@ -49,9 +49,9 @@ Run from the project directory: data paths resolve relative to the working direc
 
 1. Open **Settings** and choose alert preferences. **Auto Shutdown Apps at Limit defaults to enabled** on a fresh setup. Disable it for reminders without termination; closing a process can lose unsaved work. This option closes applications, not Windows.
 2. Select **Start Tracking**.
-3. In **App Limits**, use **Detect Apps** or enter a lowercase process name such as `chrome.exe`. Values are seconds: for example, a 3,600-second limit and a warning at 2,880 seconds of accumulated use.
+3. In **App Limits**, use **Find running apps** or enter a process name such as `chrome.exe`. Enter minutes: for example, a 60-minute daily limit and a warning after 48 minutes. Click **Save limit**. Select a row to edit it; use **New limit** to start another form. The list shows durations as HH:MM:SS.
 4. Switch applications and view the Overview. **Today** combines usage across restarts, and the date selector lets you revisit recorded days. **This session** covers the current run only. Select **Pause Tracking** to pause collection.
-5. Use **Smart Insights → Analyze My Usage** after collecting at least three dates of new daily history. Analysis reads saved daily totals without appending duplicate snapshots.
+5. Use **Insights → Analyze usage** after collecting at least three dates of new daily history. Analysis reads saved daily totals without appending duplicate snapshots.
 6. Closing the window hides it when minimizing to the tray is enabled; tracking can continue. Use the tray's exit action to quit.
 
 ## Data and privacy
@@ -61,7 +61,7 @@ The desktop implementation stores data locally in plain-text files:
 | Path | Purpose |
 | --- | --- |
 | `config.json` | Limits, warning thresholds, and cumulative usage |
-| `app_settings.json` | UI and alert preferences; saved when the theme is applied |
+| `app_settings.json` | UI and alert preferences; saved whenever a setting changes |
 | `data/daily_usage.json` | Per-date, per-application totals in seconds; authoritative daily history |
 | `data/tracker.lock` | Prevents a second running app instance from overwriting history |
 | `logs/YYYY-MM-DD.log` | Legacy window-title logs; retained but no longer written by this version |
@@ -130,7 +130,11 @@ Run the focused Overview regression tests with:
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-These checks cover summaries, paused totals, limit states, row reuse, the UI timer, restart persistence, midnight splits, repeated stop, and failed writes without starting monitoring. They do not replace a Windows visual check. The Overview starts at 1100 × 820 with a minimum window size of 960 × 800; charts refresh every five seconds and usage rows every second.
+These checks cover summaries, paused totals, limit states, row reuse, the UI timer, restart persistence, midnight splits, repeated stop, failed writes, and limit-form validation without starting monitoring. They do not replace a Windows visual check. The app starts at 1260 × 860 with a minimum window size of 1180 × 820; charts refresh every five seconds and usage rows every second.
+
+Insights shows recorded-day coverage and enables analysis after three recorded dates. Settings groups Appearance, Notifications, App Limits, and Data information; preference changes save automatically.
+
+Dropdowns use matching light/dark popup colors and larger text. The date picker displays readable calendar dates and retains your selection during refreshes. In App Limits, refresh the running-app list, type to filter it, and use the arrow keys to browse. Enter in the app field moves to the duration; Enter in a duration field saves. Choosing an existing app opens its limit for editing, and saving keeps the row selected. Refreshing the app list preserves your draft. Insights can be refreshed again on the same day.
 
 CI is not configured. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for remaining correctness issues and proposed validation scenarios.
 

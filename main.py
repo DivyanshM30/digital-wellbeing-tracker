@@ -12,7 +12,7 @@ import pyttsx3
 from collections import defaultdict
 import matplotlib.pyplot as plt
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import threading
 import queue
@@ -93,8 +93,8 @@ class DigitalWellnessApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Digital Wellness Tracker")
-        self.root.geometry("1100x820")
-        self.root.minsize(960, 800)
+        self.root.geometry("1260x860")
+        self.root.minsize(1180, 820)
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.tracking_active = False
@@ -117,71 +117,288 @@ class DigitalWellnessApp:
         self.update_ui()
 
     def create_widgets(self):
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        self.app_shell = ttk.Frame(self.root)
+        self.app_shell.pack(fill="both", expand=True)
+        self.app_shell.columnconfigure(1, weight=1)
+        self.app_shell.rowconfigure(0, weight=1)
+        self.notebook = ttk.Notebook(self.app_shell, style="Navigation.TNotebook")
+        self.notebook.grid(row=0, column=1, sticky="nsew")
         
         self.dashboard_frame = ttk.Frame(self.notebook, style="Overview.TFrame")
         self.notebook.add(self.dashboard_frame, text="Overview")
         self.build_overview()
 
-        self.limits_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.limits_frame, text="App Limits")
-        
-        self.limits_tree = ttk.Treeview(self.limits_frame, columns=("app", "limit", "warning"), show="headings")
-        self.limits_tree.heading("app", text="Application")
-        self.limits_tree.heading("limit", text="Limit (seconds)")
-        self.limits_tree.heading("warning", text="Warning (seconds)")
-        self.limits_tree.column("app", width=200)
-        self.limits_tree.column("limit", width=100)
-        self.limits_tree.column("warning", width=100)
-        self.limits_tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        
-        self.limits_button_frame = ttk.Frame(self.limits_frame)
-        self.limits_button_frame.pack(fill=tk.X, padx=10, pady=5)
-        
-        ttk.Button(self.limits_button_frame, text="Add Limit",command=self.add_app_limit).pack(side=tk.LEFT, padx=5)
-        ttk.Button(self.limits_button_frame, text="Edit Limit",command=self.edit_app_limit).pack(side=tk.LEFT, padx=5)
-        ttk.Button(self.limits_button_frame, text="Remove Limit",command=self.remove_app_limit).pack(side=tk.LEFT, padx=5)
-        ttk.Button(self.limits_button_frame, text="Detect Apps",command=self.detect_active_apps).pack(side=tk.LEFT, padx=5)
-        
-        self.settings_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.settings_frame, text="Settings")
-        
-        self.smart_frame = ttk.Frame(self.notebook)
-        self.notebook.add(self.smart_frame, text="Smart Insights")
-        
-        self.analyze_button = ttk.Button(self.smart_frame, text="Analyze My Usage", command=self.analyze_usage)
-        self.analyze_button.pack(pady=20)
-        
-        self.recommendation_text = tk.Text(self.smart_frame, height=15, wrap=tk.WORD)
-        self.recommendation_text.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        self.recommendation_text.config(state=tk.DISABLED)
-        
-        self.voice_alerts_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.settings_frame, text="Voice Alerts", 
-                        variable=self.voice_alerts_var).pack(anchor=tk.W, padx=10, pady=5)
-        
-        self.auto_shutdown_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.settings_frame, text="Auto Shutdown Apps at Limit", 
-                        variable=self.auto_shutdown_var).pack(anchor=tk.W, padx=10, pady=5)
-        
-        self.tray_notifications_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.settings_frame, text="System Tray Notifications", 
-                        variable=self.tray_notifications_var).pack(anchor=tk.W, padx=10, pady=5)
-        
-        ttk.Checkbutton(self.settings_frame, text="Dark Mode", 
-                        variable=self.dark_mode, 
-                        command=self.toggle_theme).pack(anchor=tk.W, padx=10, pady=5)
-        
-        self.minimize_to_tray_var = tk.BooleanVar(value=True)
-        ttk.Checkbutton(self.settings_frame, text="Minimize to System Tray", 
-                        variable=self.minimize_to_tray_var).pack(anchor=tk.W, padx=10, pady=5)
-        
+        self.build_remaining_pages()
+        self.build_sidebar()
+
         self.status_bar = ttk.Label(self.root, text="Ready", relief=tk.SUNKEN, anchor=tk.W)
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
         
         self.load_app_settings()
         self.update_limits_display()
+
+    def ui_frame(self, parent, surface="paper", **kwargs):
+        widget = tk.Frame(parent, **kwargs)
+        self.overview_widgets.append((widget, {"background": surface}))
+        return widget
+
+    def ui_label(self, parent, text, size=11, surface="paper", color="ink", **kwargs):
+        widget = tk.Label(parent, text=text, anchor="w", font=("Segoe UI", size), **kwargs)
+        self.overview_widgets.append((widget, {"background": surface, "foreground": color}))
+        return widget
+
+    def page_header(self, parent, eyebrow, title, description):
+        header = self.ui_frame(parent)
+        header.pack(fill="x", padx=26, pady=(22, 20))
+        self.ui_label(header, eyebrow, 9, color="muted").pack(anchor="w")
+        self.ui_label(header, title, 27).pack(anchor="w", pady=(5, 4))
+        self.ui_label(header, description, 11, color="muted",
+                      wraplength=650, justify="left").pack(anchor="w")
+
+    def build_remaining_pages(self):
+        self.limits_frame = ttk.Frame(self.notebook, style="Overview.TFrame")
+        self.smart_frame = ttk.Frame(self.notebook, style="Overview.TFrame")
+        self.settings_frame = ttk.Frame(self.notebook, style="Overview.TFrame")
+        for page, title in ((self.limits_frame, "App Limits"), (self.smart_frame, "Insights"),
+                            (self.settings_frame, "Settings")):
+            self.notebook.add(page, text=title)
+        self.build_limits_page()
+        self.build_insights_page()
+        self.build_settings_page()
+
+    def build_sidebar(self):
+        sidebar = self.ui_frame(self.app_shell, "card", width=170)
+        sidebar.grid(row=0, column=0, sticky="ns")
+        sidebar.pack_propagate(False)
+        self.ui_label(sidebar, "dw", 32, "card", "accent").pack(anchor="w", padx=20, pady=(24, 0))
+        self.ui_label(sidebar, "digital wellbeing", 11, "card").pack(anchor="w", padx=20)
+        self.ui_label(sidebar, "A little more intentional.", 9, "card", "muted").pack(anchor="w", padx=20, pady=(4, 30))
+        self.nav_buttons = []
+        for index, name in enumerate(("Overview", "App Limits", "Insights", "Settings")):
+            button = ttk.Button(sidebar, text=name, command=lambda i=index: self.notebook.select(i))
+            button.pack(fill="x", padx=12, pady=5)
+            self.nav_buttons.append(button)
+        self.ui_label(sidebar, "Windows desktop\nStored on your device", 9, "card", "muted",
+                      justify="left").pack(side="bottom", anchor="w", padx=20, pady=24)
+        self.notebook.bind("<<NotebookTabChanged>>", self.navigation_changed)
+
+    def navigation_changed(self, event=None):
+        selected = self.notebook.index(self.notebook.select())
+        for index, button in enumerate(self.nav_buttons):
+            button.configure(style="Selected.TButton" if index == selected else "TButton")
+        self.refresh_insight_coverage()
+
+    def build_limits_page(self):
+        self.page_header(self.limits_frame, "YOUR OWN BOUNDARIES", "App Limits",
+                         "Set a daily allowance and choose when you would like a reminder.")
+        body = self.ui_frame(self.limits_frame)
+        body.pack(fill="both", expand=True, padx=26, pady=(0, 22))
+        body.columnconfigure(0, weight=1)
+        body.columnconfigure(1, weight=0, minsize=275)
+        body.rowconfigure(0, weight=1)
+        list_card = self.ui_frame(body, "card", padx=14, pady=16)
+        list_card.grid(row=0, column=0, sticky="nsew", padx=(0, 12))
+        self.ui_label(list_card, "Your daily limits", 15, "card").pack(anchor="w", pady=(0, 12))
+        table = self.ui_frame(list_card, "card")
+        table.pack(fill="both", expand=True)
+        self.limits_tree = ttk.Treeview(table, columns=("app", "limit", "warning"),
+                                        show="headings", selectmode="browse", height=12)
+        for name, title, width in (("app", "Application", 145), ("limit", "Daily limit", 95),
+                                    ("warning", "Warn at", 95)):
+            self.limits_tree.heading(name, text=title)
+            self.limits_tree.column(name, width=width, minwidth=65)
+        scrollbar = ttk.Scrollbar(table, command=self.limits_tree.yview)
+        self.limits_tree.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        self.limits_tree.pack(fill="both", expand=True)
+        self.limits_tree.bind("<<TreeviewSelect>>", self.edit_app_limit)
+        self.limits_empty = self.ui_label(list_card, "No limits yet. Add your first app using the form.", 10,
+                                           "card", "muted", wraplength=300, justify="left")
+        self.limits_empty.pack(anchor="w", pady=(12, 0))
+        actions = self.ui_frame(list_card, "card")
+        actions.pack(fill="x", pady=(12, 0))
+        ttk.Button(actions, text="New limit", command=self.add_app_limit).pack(side="left")
+        self.remove_limit_button = ttk.Button(actions, text="Remove selected", command=self.remove_app_limit, state="disabled")
+        self.remove_limit_button.pack(side="left", padx=8)
+        editor = self.ui_frame(body, "card", padx=18, pady=16)
+        editor.grid(row=0, column=1, sticky="nsew")
+        self.limit_editor_title = self.ui_label(editor, "Add an application", 15, "card")
+        self.limit_editor_title.pack(anchor="w", pady=(0, 18))
+        self.limit_app_var = tk.StringVar()
+        self.limit_minutes_var = tk.StringVar(value="60")
+        self.warning_minutes_var = tk.StringVar(value="48")
+        self.editing_limit = None
+        self.ui_label(editor, "Process name", 10, "card").pack(anchor="w")
+        self.app_choices = []
+        self.limit_app_entry = ttk.Combobox(editor, textvariable=self.limit_app_var, width=24,
+                                           height=8, font=("Segoe UI", 11), style="Wellbeing.TCombobox")
+        self.limit_app_entry.bind("<KeyRelease>", self.filter_app_choices)
+        self.limit_app_entry.bind("<<ComboboxSelected>>", self.select_app_choice)
+        self.limit_app_entry.pack(fill="x", pady=(5, 4))
+        self.ui_label(editor, "For example: chrome.exe", 9, "card", "muted").pack(anchor="w")
+        ttk.Button(editor, text="Find running apps", command=self.detect_active_apps).pack(fill="x", pady=(12, 18))
+        self.duration_entries = []
+        for title, variable in (("Daily limit · minutes", self.limit_minutes_var),
+                                ("Warn after · minutes", self.warning_minutes_var)):
+            self.ui_label(editor, title, 10, "card").pack(anchor="w")
+            entry = ttk.Entry(editor, textvariable=variable)
+            entry.pack(fill="x", pady=(5, 15))
+            entry.bind('<Return>', lambda event: self.save_limit_form())
+            self.duration_entries.append(entry)
+        self.limit_form_message = self.ui_label(editor, "", 10, "card", "muted",
+                                                wraplength=230, justify="left")
+        self.limit_form_message.pack(anchor="w", pady=(0, 12))
+        self.save_limit_button = ttk.Button(editor, text="Save limit", command=self.save_limit_form)
+        self.save_limit_button.pack(fill="x")
+        editor.bind("<Return>", lambda event: self.save_limit_form())
+        self.limit_app_entry.bind("<Return>", self.focus_limit_duration)
+        self.ui_label(editor, "Type to filter · ↓ to browse · Esc to close", 9, "card", "muted",
+                      wraplength=230, justify="left").pack(anchor="w", pady=(10, 0))
+        self.ui_label(editor, "Alerts and automatic app closure can be changed in Settings.",
+                      10, "card", "muted", wraplength=230, justify="left").pack(anchor="w", pady=(20, 0))
+
+    @staticmethod
+    def parse_limit_form(app, limit_minutes, warning_minutes):
+        name = app.strip().lower()
+        if not name:
+            raise ValueError("Enter a process name, such as chrome.exe.")
+        try:
+            limit_value, warning_value = float(limit_minutes), float(warning_minutes)
+            if not math.isfinite(limit_value) or not math.isfinite(warning_value):
+                raise ValueError()
+            limit, warning = round(limit_value * 60), round(warning_value * 60)
+        except (ValueError, OverflowError):
+            raise ValueError("Enter valid durations in minutes.") from None
+        if not 0 < warning < limit:
+            raise ValueError("The warning must be greater than zero and earlier than the limit.")
+        return name, limit, warning
+
+    def save_limit_form(self):
+        try:
+            app, limit, warning = self.parse_limit_form(
+                self.limit_app_var.get(), self.limit_minutes_var.get(), self.warning_minutes_var.get())
+        except ValueError as error:
+            self.limit_form_message.config(text=str(error))
+            return
+        if self.editing_limit is None and app in self.tracker.app_limits:
+            self.limit_form_message.config(text="This app already has a limit. Select it in the list to edit.")
+            return
+        previous_limits = self.tracker.app_limits.copy()
+        previous_warnings = self.tracker.warning_times.copy()
+        self.tracker.app_limits[app] = limit
+        self.tracker.warning_times[app] = warning
+        try:
+            self.tracker.save_config()
+        except OSError as error:
+            self.tracker.app_limits = previous_limits
+            self.tracker.warning_times = previous_warnings
+            self.limit_form_message.config(text=f"Could not save: {error}")
+            return
+        self.update_limits_display()
+        self.limits_tree.selection_set(app)
+        self.limits_tree.see(app)
+        self.edit_app_limit()
+        self.limit_form_message.config(text=f"Saved daily limit for {app}.")
+
+    def filter_app_choices(self, event=None):
+        if self.editing_limit is not None or (event and event.keysym in (
+                'Up', 'Down', 'Return', 'Escape', 'Tab')):
+            return
+        query = self.limit_app_var.get().strip().lower()
+        matches = [name for name in self.app_choices if query in name]
+        self.limit_app_entry.configure(values=matches)
+        self.limit_form_message.configure(text=(f'{len(matches)} matching apps. Use ↓ to browse.'
+            if matches else 'No matching running app. You can still save the typed process name.'))
+
+    def select_app_choice(self, event=None):
+        name = self.limit_app_var.get().strip().lower()
+        if name in self.tracker.app_limits:
+            self.limits_tree.selection_set(name)
+            self.limits_tree.see(name)
+            self.edit_app_limit()
+        else:
+            self.limit_form_message.configure(text=f'Ready to set a daily limit for {name}.')
+
+    def focus_limit_duration(self, event=None):
+        self.select_app_choice()
+        self.duration_entries[0].focus_set()
+        return 'break'
+
+    def build_insights_page(self):
+        self.page_header(self.smart_frame, "PAUSE AND REFLECT", "Insights",
+                         "Understand your patterns, one day at a time. Summaries use your saved daily history.")
+        card = self.ui_frame(self.smart_frame, "card", padx=22, pady=20)
+        card.pack(fill="both", expand=True, padx=26, pady=(0, 24))
+        toolbar = self.ui_frame(card, "card")
+        toolbar.pack(fill="x", pady=(0, 20))
+        self.insight_coverage = self.ui_label(toolbar, "Building your history", 12, "card")
+        self.insight_coverage.pack(side="left")
+        self.analyze_button = ttk.Button(toolbar, text="Analyze usage", command=self.analyze_usage)
+        self.analyze_button.pack(side="right")
+        self.recommendation_text = tk.Text(card, wrap="word", font=("Segoe UI", 12),
+                                           relief="flat", borderwidth=0, padx=12, pady=14,
+                                           height=12, spacing1=4, spacing3=8)
+        self.overview_widgets.append((self.recommendation_text, {
+            "background": "paper", "foreground": "ink", "insertbackground": "ink",
+            "selectbackground": "accent", "selectforeground": "button_text"}))
+        scroll = ttk.Scrollbar(card, command=self.recommendation_text.yview)
+        self.recommendation_text.configure(yscrollcommand=scroll.set)
+        scroll.pack(side="right", fill="y")
+        self.recommendation_text.pack(fill="both", expand=True)
+        self.recommendation_text.insert("1.0", "A clearer picture takes a little time.\n\n"
+            "Record usage on at least three different days to unlock your first analysis.\n\n"
+            "In the meantime, explore Today and previous days in Overview.\n\n"
+            "These are statistical summaries of foreground time. Idle time is currently included.")
+        self.recommendation_text.configure(state="disabled")
+
+    def refresh_insight_coverage(self):
+        days = len(self.tracker.daily_store.dates())
+        self.insight_coverage.configure(text=f"{days} recorded day{'s' if days != 1 else ''} · "
+                                       + ("Ready to explore" if days >= 3 else f"{3 - days} more needed"))
+        self.analyze_button.configure(state="normal" if days >= 3 else "disabled")
+
+    def build_settings_page(self):
+        self.page_header(self.settings_frame, "MAKE IT YOURS", "Settings",
+                         "Choose how the tracker fits into your day. Changes are saved automatically.")
+        self.voice_alerts_var = tk.BooleanVar(value=True)
+        self.auto_shutdown_var = tk.BooleanVar(value=True)
+        self.tray_notifications_var = tk.BooleanVar(value=True)
+        self.minimize_to_tray_var = tk.BooleanVar(value=True)
+        body = self.ui_frame(self.settings_frame)
+        body.pack(fill="both", expand=True, padx=26, pady=(0, 22))
+        for column in (0, 1):
+            body.columnconfigure(column, weight=1, uniform="settings")
+        groups = (
+            ("Appearance", (("Dark mode", "A softer palette for low-light spaces.", self.dark_mode, self.toggle_theme),
+                            ("Minimize to tray", "Closing the window keeps the app available in the notification area.",
+                             self.minimize_to_tray_var, self.save_app_settings))),
+            ("Notifications", (("Voice reminders", "Hear a reminder when you approach a limit.", self.voice_alerts_var, self.save_app_settings),
+                               ("Desktop notifications", "Show updates in the Windows notification area.", self.tray_notifications_var, self.save_app_settings))),
+            ("App limits", (("Close apps at their limit", "Can close an app with unsaved work. Turn off for reminders only.",
+                            self.auto_shutdown_var, self.save_app_settings),)),
+        )
+        for index, (title, settings) in enumerate(groups):
+            card = self.ui_frame(body, "card", padx=18, pady=18)
+            card.grid(row=index // 2, column=index % 2, sticky="nsew",
+                      padx=(0, 8) if index % 2 == 0 else (8, 0), pady=(0, 16))
+            self.ui_label(card, title, 15, "card").pack(anchor="w", pady=(0, 12))
+            for name, description, variable, command in settings:
+                toggle = tk.Checkbutton(card, text=name, variable=variable, command=command,
+                                         font=("Segoe UI", 11), anchor="w", relief="flat",
+                                         borderwidth=0, highlightthickness=0, cursor="hand2")
+                self.overview_widgets.append((toggle, {"background": "card", "foreground": "ink",
+                    "activebackground": "card", "activeforeground": "ink", "selectcolor": "paper"}))
+                toggle.pack(fill="x", pady=(4, 4))
+                self.ui_label(card, description, 10, "card", "muted", wraplength=270,
+                              justify="left").pack(anchor="w", padx=(22, 0), pady=(0, 12))
+        data = self.ui_frame(body, "card", padx=18, pady=18)
+        data.grid(row=1, column=1, sticky="nsew", padx=(8, 0), pady=(0, 16))
+        self.ui_label(data, "Your data", 15, "card").pack(anchor="w", pady=(0, 12))
+        self.ui_label(data, "Saved on this device", 11, "card").pack(anchor="w")
+        self.ui_label(data, "Daily totals are saved automatically and survive restart. "
+                      "Window titles are not written to daily history.\n\n"
+                      "There is no automatic deletion. Back up your data before removing files.",
+                      10, "card", "muted", wraplength=280, justify="left").pack(anchor="w", pady=(8, 0))
 
     def build_overview(self):
         """Build a dashboard whose widgets survive each tracking refresh."""
@@ -205,9 +422,15 @@ class DigitalWellnessApp:
 
         heading = frame(self.dashboard_frame)
         heading.grid(row=0, column=0, sticky="ew", padx=26, pady=(20, 14))
-        self.day_picker = ttk.Combobox(heading, textvariable=self.day_var, state='readonly',
-                                       values=('Today', 'This session'), width=17)
-        self.day_picker.pack(side='right', anchor='n')
+        self.day_lookup = {}
+        self.day_choices = None
+        period = frame(heading)
+        period.pack(side='right', anchor='n')
+        label(period, 'View usage', 9, color='muted').pack(anchor='w', pady=(0, 5))
+        self.day_picker = ttk.Combobox(period, textvariable=self.day_var, state='readonly',
+                                       values=('Today', 'This session'), width=23, height=8,
+                                       font=('Segoe UI', 11), style='Wellbeing.TCombobox')
+        self.day_picker.pack(anchor='w')
         self.day_picker.bind('<<ComboboxSelected>>', self.change_usage_day)
         label(heading, "YOUR TIME, WITH INTENTION", 9, color="muted").pack(anchor="w")
         label(heading, "Overview", 27).pack(anchor="w", pady=(4, 0))
@@ -304,7 +527,7 @@ class DigitalWellnessApp:
         """Snapshot session values without adding empty entries to tracker state."""
         selection = self.day_var.get() if hasattr(self, 'day_var') else 'This session'
         if selection != 'This session':
-            day = datetime.now().date().isoformat() if selection == 'Today' else selection
+            day = datetime.now().date().isoformat() if selection == 'Today' else getattr(self, 'day_lookup', {}).get(selection, selection)
             usage = self.tracker.daily_store.usage(day)
             return dict(sorted(usage.items(), key=lambda item: (-item[1], item[0])))
         usage = {app: max(0, data["time"])
@@ -321,6 +544,22 @@ class DigitalWellnessApp:
         self.update_progress_bars(usage)
         self.update_stats_display(usage)
         self.last_chart_refresh = time.monotonic()
+
+    def refresh_day_choices(self):
+        today = datetime.now().date().isoformat()
+        dates = tuple(day for day in self.tracker.daily_store.dates() if day != today)
+        key = (today, dates)
+        if key == self.day_choices:
+            return
+        selected = self.day_var.get()
+        selected_date = self.day_lookup.get(selected, selected)
+        self.day_lookup = {datetime.strptime(day, '%Y-%m-%d').strftime('%a, %d %b %Y'): day
+                           for day in dates}
+        self.day_picker.configure(values=['Today', 'This session'] + list(self.day_lookup))
+        if selected not in ('Today', 'This session'):
+            label = next((label for label, day in self.day_lookup.items() if day == selected_date), 'Today')
+            self.day_var.set(label)
+        self.day_choices = key
 
     def tracking_finished(self):
         if self.tracking_thread and self.tracking_thread.is_alive():
@@ -370,6 +609,8 @@ class DigitalWellnessApp:
                 json.dump(settings, f, indent=4)
         except Exception as e:
             print(f"Error saving app settings: {e}")
+            if hasattr(self, 'status_bar'):
+                self.status_bar.configure(text=f'Settings could not be saved: {e}')
 
     def toggle_theme(self):
         """Apply the same quiet palette to the dashboard and its chart."""
@@ -383,7 +624,24 @@ class DigitalWellnessApp:
             "muted": "#607062", "accent": "#526f43", "track": "#e6ebdf",
             "warning": "#a87526", "danger": "#b95343", "button_text": "#ffffff",
         })
-        ttk.Style().configure("Overview.TFrame", background=self.palette["paper"])
+        style = ttk.Style()
+        style.layout("Navigation.TNotebook.Tab", [])
+        style.configure("Navigation.TNotebook", borderwidth=0, background=self.palette["paper"])
+        style.configure("Overview.TFrame", background=self.palette["paper"])
+        style.configure("Treeview", rowheight=36)
+        style.configure("Selected.TButton", foreground=self.palette["accent"], font=("Segoe UI", 11, "bold"))
+        style.configure('Wellbeing.TCombobox', padding=(10, 8), arrowsize=16)
+        style.map('Wellbeing.TCombobox', fieldbackground=[('readonly', self.palette['card'])],
+                  foreground=[('readonly', self.palette['ink'])],
+                  selectbackground=[('readonly', self.palette['accent'])],
+                  selectforeground=[('readonly', self.palette['button_text'])])
+        # ttk popdowns are native Tcl listboxes rather than Python child widgets.
+        for combo in (self.day_picker, self.limit_app_entry):
+            popup = self.root.tk.call('ttk::combobox::PopdownWindow', str(combo))
+            self.root.tk.call(str(popup) + '.f.l', 'configure',
+                '-background', self.palette['card'], '-foreground', self.palette['ink'],
+                '-selectbackground', self.palette['accent'], '-selectforeground', self.palette['button_text'],
+                '-font', ('Segoe UI', 11), '-borderwidth', 0)
         for widget, options in self.overview_widgets:
             widget.configure(**{key: self.palette[value] for key, value in options.items()})
         self.canvas.get_tk_widget().configure(background=self.palette["card"], highlightthickness=0)
@@ -482,10 +740,10 @@ class DigitalWellnessApp:
             action()
             if self.closing:
                 return
+        if hasattr(self, "insight_coverage"):
+            self.refresh_insight_coverage()
         if hasattr(self, 'day_picker'):
-            today = datetime.now().date().isoformat()
-            self.day_picker.configure(values=['Today', 'This session'] + [
-                day for day in self.tracker.daily_store.dates() if day != today])
+            self.refresh_day_choices()
         usage = self.overview_usage()
         if self.tracking_active:
             self.tracking_badge.config(text="TRACKING ACTIVE")
@@ -590,51 +848,43 @@ class DigitalWellnessApp:
         
         for app, limit in sorted(self.tracker.app_limits.items()):
             warning = self.tracker.warning_times.get(app, limit * 0.8)
-            self.limits_tree.insert("", "end", values=(app, limit, warning))
+            self.limits_tree.insert("", "end", iid=app, values=(app, self.format_time(limit), self.format_time(warning)))
+        self.limits_empty.configure(text="" if self.tracker.app_limits else "No limits yet. Add your first app using the form.")
 
     def add_app_limit(self):
-        app_name = simpledialog.askstring("Add App Limit", "Application name:")
-        if not app_name:
-            return
-            
-        limit = simpledialog.askinteger("Add App Limit", f"Time limit for {app_name} (seconds):")
-        if not limit:
-            return
-            
-        warning = simpledialog.askinteger("Add App Limit", f"Warning time for {app_name} (seconds):", 
-                                         initialvalue=int(limit * 0.8))
-        if warning is None:
-            warning = int(limit * 0.8)
-        
-        self.tracker.app_limits[app_name] = limit
-        self.tracker.warning_times[app_name] = warning
-        self.tracker.save_config()
-        
-        self.update_limits_display()
+        self.editing_limit = None
+        self.limits_tree.selection_remove(self.limits_tree.selection())
+        self.remove_limit_button.configure(state='disabled')
+        self.save_limit_button.configure(text='Save limit')
+        self.limit_app_entry.configure(state="normal")
+        self.limit_app_entry.configure(values=self.app_choices)
+        self.limit_app_var.set("")
+        self.limit_minutes_var.set("60")
+        self.warning_minutes_var.set("48")
+        self.limit_editor_title.configure(text="Add an application")
+        self.limit_form_message.configure(text="")
+        self.limit_app_entry.focus_set()
 
-    def edit_app_limit(self):
+    def edit_app_limit(self, event=None):
         selected = self.limits_tree.selection()
+        self.remove_limit_button.configure(state='normal' if selected else 'disabled')
         if not selected:
-            messagebox.showwarning("Edit Limit", "Please select an app to edit")
             return
-            
-        app_name = self.limits_tree.item(selected[0], "values")[0]
-        current_limit = self.tracker.app_limits.get(app_name, 0)
-        current_warning = self.tracker.warning_times.get(app_name, current_limit * 0.8)
-        
-        limit = simpledialog.askinteger("Edit App Limit", f"Time limit for {app_name} (seconds):",initialvalue=current_limit)
-        if not limit:
+        app = self.limits_tree.item(selected[0], "values")[0]
+        if app not in self.tracker.app_limits:
             return
-            
-        warning = simpledialog.askinteger("Edit App Limit", f"Warning time for {app_name} (seconds):",initialvalue=current_warning)
-        if warning is None:
-            warning = int(limit * 0.8)
-        
-        self.tracker.app_limits[app_name] = limit
-        self.tracker.warning_times[app_name] = warning
-        self.tracker.save_config()
-        
-        self.update_limits_display()
+        changed = self.editing_limit != app
+        if not changed and event is not None:
+            return
+        self.editing_limit = app
+        self.limit_app_var.set(app)
+        self.limit_app_entry.configure(state="disabled")
+        self.limit_minutes_var.set(f"{self.tracker.app_limits[app] / 60:.10g}")
+        self.warning_minutes_var.set(f"{self.tracker.warning_times.get(app, self.tracker.app_limits[app] * .8) / 60:.10g}")
+        self.limit_editor_title.configure(text="Edit daily limit")
+        self.save_limit_button.configure(text='Save changes')
+        if changed:
+            self.limit_form_message.configure(text="")
 
     def remove_app_limit(self):
         selected = self.limits_tree.selection()
@@ -645,60 +895,43 @@ class DigitalWellnessApp:
         app_name = self.limits_tree.item(selected[0], "values")[0]
         
         if messagebox.askyesno("Remove Limit", f"Remove limit for {app_name}?"):
-            # Update tracker config
+            previous_limits = self.tracker.app_limits.copy()
+            previous_warnings = self.tracker.warning_times.copy()
             if app_name in self.tracker.app_limits:
                 del self.tracker.app_limits[app_name]
             if app_name in self.tracker.warning_times:
                 del self.tracker.warning_times[app_name]
-            self.tracker.save_config()
-            
+            try:
+                self.tracker.save_config()
+            except OSError as error:
+                self.tracker.app_limits = previous_limits
+                self.tracker.warning_times = previous_warnings
+                self.limit_form_message.configure(text=f'Could not remove limit: {error}')
+                return
             self.update_limits_display()
+            self.add_app_limit()
+            self.limit_form_message.configure(text=f'Removed limit for {app_name}.')
 
     def detect_active_apps(self):
-        foreground_apps = set()
-        
-        def window_enum_callback(hwnd, _):
+        apps = set()
+        def collect(hwnd, _):
             if win32gui.IsWindowVisible(hwnd) and win32gui.GetWindowText(hwnd):
                 _, pid = win32process.GetWindowThreadProcessId(hwnd)
                 try:
-                    process = psutil.Process(pid)
-                    foreground_apps.add(process.name().lower())
+                    apps.add(psutil.Process(pid).name().lower())
                 except (psutil.NoSuchProcess, psutil.AccessDenied):
                     pass
-        
-        win32gui.EnumWindows(window_enum_callback, None)
-        
-        if not foreground_apps:
-            messagebox.showinfo("Detect Apps", "No foreground applications detected")
+        try:
+            win32gui.EnumWindows(collect, None)
+        except Exception as error:
+            self.limit_form_message.configure(text=f'Could not refresh apps: {error}')
             return
-        
-        select_dialog = tk.Toplevel(self.root)
-        select_dialog.title("Select Applications")
-        select_dialog.geometry("400x400")
-        select_dialog.transient(self.root)
-        select_dialog.grab_set()
-        
-        tk.Label(select_dialog, text="Select applications to set limits:").pack(padx=10, pady=5)
-        
-        app_vars = {}
-        for app in sorted(foreground_apps):
-            var = tk.BooleanVar(value=app in self.tracker.app_limits)
-            app_vars[app] = var
-            tk.Checkbutton(select_dialog, text=app, variable=var).pack(anchor=tk.W, padx=20, pady=2)
-        
-        def on_confirm():
-            for app, var in app_vars.items():
-                if var.get() and app not in self.tracker.app_limits:
-                    limit = simpledialog.askinteger("Add App Limit", f"Time limit for {app} (seconds):", parent=select_dialog)
-                    if limit:
-                        self.tracker.app_limits[app] = limit
-                        self.tracker.warning_times[app] = int(limit * 0.8)
-            
-            self.tracker.save_config()
-            self.update_limits_display()
-            select_dialog.destroy()
-        
-        tk.Button(select_dialog, text="Confirm", command=on_confirm).pack(pady=10)
+        self.app_choices = sorted(apps | set(self.tracker.app_limits))
+        self.limit_app_entry.configure(values=self.app_choices)
+        self.limit_form_message.configure(text=(
+            'App list refreshed. Choose New limit to add another app.' if self.editing_limit else
+            'App list refreshed. Type to filter or use the dropdown.' if self.app_choices else
+            'No apps found. You can type a process name.'))
 
     def schedule_auto_analysis(self):
         now = datetime.now()
@@ -711,11 +944,6 @@ class DigitalWellnessApp:
     def analyze_usage(self):
         try:
             today_str = datetime.now().strftime('%Y-%m-%d')
-
-            # Prevent reprocessing for the same date
-            if hasattr(self, 'insights_generated_for') and self.insights_generated_for == today_str:
-                messagebox.showinfo("Smart Insights", "Insights already generated for today.")
-                return
 
             df = pd.DataFrame(self.tracker.daily_store.rows(), columns=['date', 'app', 'duration'])
             if df.empty:
