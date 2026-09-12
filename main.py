@@ -1,6 +1,9 @@
 import os
 import time
 import json
+import math
+import tempfile
+from pathlib import Path
 from datetime import datetime, timedelta
 import psutil
 import win32gui
@@ -20,6 +23,71 @@ from plyer import notification
 import sv_ttk   
 import pandas as pd
 from sklearn.cluster import KMeans
+
+class DailyUsageStore:
+    """Daily totals committed atomically, independent of analytics or shutdown."""
+
+    def __init__(self, path=None):
+        application_path = sys.executable if getattr(sys, 'frozen', False) else __file__
+        self.path = Path(path) if path else Path(application_path).resolve().parent / 'data' / 'daily_usage.json'
+        self.lock = threading.RLock()
+        self.days = {}
+        if self.path.exists():
+            payload = json.loads(self.path.read_text(encoding='utf-8'))
+            if payload.get('version') != 1:
+                raise ValueError('Unsupported daily usage version; file left unchanged')
+            for day, apps in payload['days'].items():
+                datetime.strptime(day, '%Y-%m-%d')
+                if not isinstance(apps, dict) or any(
+                        not isinstance(app, str) or not isinstance(value, (int, float))
+                        or not math.isfinite(value) or value < 0 for app, value in apps.items()):
+                    raise ValueError('Invalid daily usage data; file left unchanged')
+            self.days = payload['days']
+
+    def record(self, app, started, seconds):
+        if not math.isfinite(seconds):
+            raise ValueError('Usage duration must be finite')
+        if seconds <= 0:
+            return
+        with self.lock:
+            updated = {day: apps.copy() for day, apps in self.days.items()}
+            cursor = datetime.fromtimestamp(started)
+            remaining = seconds
+            while remaining > 0:
+                midnight = datetime.combine(cursor.date() + timedelta(days=1), datetime.min.time())
+                part = min(remaining, (midnight - cursor).total_seconds())
+                apps = updated.setdefault(cursor.date().isoformat(), {})
+                apps[app] = apps.get(app, 0) + part
+                remaining -= part
+                cursor = midnight
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = None
+            try:
+                with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=self.path.parent,
+                        prefix='.daily-', suffix='.tmp', delete=False) as output:
+                    temporary = output.name
+                    json.dump({'version': 1, 'days': updated}, output, indent=2)
+                    output.flush()
+                    os.fsync(output.fileno())
+                os.replace(temporary, self.path)
+            finally:
+                if temporary and os.path.exists(temporary):
+                    os.unlink(temporary)
+            self.days = updated
+
+    def usage(self, day):
+        with self.lock:
+            return self.days.get(day, {}).copy()
+
+    def dates(self):
+        with self.lock:
+            return sorted(self.days, reverse=True)
+
+    def rows(self):
+        with self.lock:
+            return [{'date': day, 'app': app, 'duration': seconds}
+                    for day, apps in sorted(self.days.items()) for app, seconds in apps.items()]
+
 
 class DigitalWellnessApp:
     def __init__(self, root):
@@ -117,6 +185,7 @@ class DigitalWellnessApp:
 
     def build_overview(self):
         """Build a dashboard whose widgets survive each tracking refresh."""
+        self.day_var = tk.StringVar(value='Today')
         self.overview_widgets = []
         self.overview_rows = []
         self.dashboard_frame.columnconfigure(0, weight=1)
@@ -136,6 +205,10 @@ class DigitalWellnessApp:
 
         heading = frame(self.dashboard_frame)
         heading.grid(row=0, column=0, sticky="ew", padx=26, pady=(20, 14))
+        self.day_picker = ttk.Combobox(heading, textvariable=self.day_var, state='readonly',
+                                       values=('Today', 'This session'), width=17)
+        self.day_picker.pack(side='right', anchor='n')
+        self.day_picker.bind('<<ComboboxSelected>>', self.change_usage_day)
         label(heading, "YOUR TIME, WITH INTENTION", 9, color="muted").pack(anchor="w")
         label(heading, "Overview", 27).pack(anchor="w", pady=(4, 0))
         label(heading, "A little awareness goes a long way.", 11,
@@ -165,7 +238,7 @@ class DigitalWellnessApp:
         self.summary_values = []
         self.summary_details = []
         for column, (title, value, detail) in enumerate((
-                ("THIS SESSION", "00:00:00", "Foreground time · includes idle time"),
+                ("SELECTED PERIOD", "00:00:00", "Foreground time · includes idle time"),
                 ("MOST USED", "—", "Your most-used app will appear here"),
                 ("LIMIT CHECK-IN", "0 apps", "Approaching or over their limit"))):
             summaries.columnconfigure(column, weight=1, uniform="summary")
@@ -189,7 +262,7 @@ class DigitalWellnessApp:
         self.progress_frame = frame(body, "card", padx=16, pady=14)
         self.progress_frame.grid(row=0, column=0, sticky="nsew", padx=(0, 7))
         label(self.progress_frame, "Application activity", 14, "card").pack(anchor="w")
-        label(self.progress_frame, "Top 5 · Bars show share of session or limit used",
+        label(self.progress_frame, "Top 5 · Bars show share of period or limit used",
               9, "card", "muted", wraplength=350, justify="left").pack(anchor="w", pady=(3, 10))
         self.empty_usage = label(self.progress_frame,
             "A fresh start.\n\nStart tracking, then switch between apps.\nYour session will take shape here.",
@@ -217,18 +290,23 @@ class DigitalWellnessApp:
         self.stats_frame = frame(body, "card", padx=10, pady=14)
         self.stats_frame.grid(row=0, column=1, sticky="nsew", padx=(7, 0))
         label(self.stats_frame, "Where your time goes", 14, "card").pack(anchor="w", padx=6)
-        label(self.stats_frame, "Top 5 applications · minutes this session", 9,
+        label(self.stats_frame, "Top 5 applications · minutes in selected period", 9,
               "card", "muted").pack(anchor="w", padx=6, pady=(3, 0))
         self.figure = plt.Figure(figsize=(4, 2.8), dpi=100)
         self.ax = self.figure.add_subplot(111)
         self.canvas = FigureCanvasTkAgg(self.figure, self.stats_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         label(self.dashboard_frame,
-              "This session spans pauses until you quit. Closing the window may keep tracking in the tray.",
+              "Daily totals are saved automatically. Choose a date to revisit previous days. Idle time is included.",
               9, color="muted").grid(row=4, column=0, sticky="w", padx=26, pady=(0, 12))
 
     def overview_usage(self):
         """Snapshot session values without adding empty entries to tracker state."""
+        selection = self.day_var.get() if hasattr(self, 'day_var') else 'This session'
+        if selection != 'This session':
+            day = datetime.now().date().isoformat() if selection == 'Today' else selection
+            usage = self.tracker.daily_store.usage(day)
+            return dict(sorted(usage.items(), key=lambda item: (-item[1], item[0])))
         usage = {app: max(0, data["time"])
                  for app, data in self.tracker.session_data.copy().items()}
         current_app = self.tracker.current_app
@@ -237,6 +315,20 @@ class DigitalWellnessApp:
             usage[current_app] = usage.get(current_app, 0) + max(0, time.time() - started)
         return dict(sorted(((app, seconds) for app, seconds in usage.items() if seconds > 0),
                            key=lambda item: (-item[1], item[0])))
+
+    def change_usage_day(self, event=None):
+        usage = self.overview_usage()
+        self.update_progress_bars(usage)
+        self.update_stats_display(usage)
+        self.last_chart_refresh = time.monotonic()
+
+    def tracking_finished(self):
+        if self.tracking_thread and self.tracking_thread.is_alive():
+            return
+        self.tracking_active = False
+        self.start_stop_button.config(text='Start Tracking')
+        self.status_bar.config(text='Tracking paused · daily totals saved')
+        self.last_chart_refresh = 0
 
     @staticmethod
     def short_app_name(app, length=24):
@@ -360,6 +452,8 @@ class DigitalWellnessApp:
         if self.tracking_thread and self.tracking_thread.is_alive():
             return  # Already tracking
             
+        self.tracker.stop_requested = False
+        self.tracker.stop_event.clear()
         self.tracking_active = True
         self.start_stop_button.config(text="Pause Tracking")
         self.status_bar.config(text="Tracking active...")
@@ -388,6 +482,10 @@ class DigitalWellnessApp:
             action()
             if self.closing:
                 return
+        if hasattr(self, 'day_picker'):
+            today = datetime.now().date().isoformat()
+            self.day_picker.configure(values=['Today', 'This session'] + [
+                day for day in self.tracker.daily_store.dates() if day != today])
         usage = self.overview_usage()
         if self.tracking_active:
             self.tracking_badge.config(text="TRACKING ACTIVE")
@@ -400,7 +498,7 @@ class DigitalWellnessApp:
             self.tracking_badge.config(text="TRACKING PAUSED" if usage else "READY TO BEGIN")
             self.current_app_label.config(text="A moment to step away." if usage
                                           else "Make a little room for yourself.")
-            self.current_window_label.config(text="Your session totals stay here until you quit." if usage
+            self.current_window_label.config(text="Your daily totals stay saved after you quit." if usage
                                               else "Start tracking to see your application usage.")
         self.update_progress_bars(usage)
         now = time.monotonic()
@@ -417,7 +515,7 @@ class DigitalWellnessApp:
         self.summary_values[1].config(
             text=self.short_app_name(most_used, 18) if most_used else "—")
         self.summary_details[1].config(
-            text=f"{self.format_time(usage[most_used])} · {usage[most_used] / total:.0%} of session"
+            text=f"{self.format_time(usage[most_used])} · {usage[most_used] / total:.0%} of period"
             if most_used else "Your most-used app will appear here")
         nearing = sum(1 for app, seconds in usage.items()
                       if self.tracker.app_limits.get(app, 0) > 0
@@ -448,7 +546,7 @@ class DigitalWellnessApp:
             else:
                 fraction = seconds / total if total else 0
                 row["color"] = "accent"
-                detail = f"{fraction:.0%} of session · No limit"
+                detail = f"{fraction:.0%} of period · No limit"
             row["fraction"] = min(1, max(0, fraction))
             row["detail"].config(text=detail)
             self.paint_usage_bar(row)
@@ -612,8 +710,6 @@ class DigitalWellnessApp:
 
     def analyze_usage(self):
         try:
-            self.log_daily_usage()
-
             today_str = datetime.now().strftime('%Y-%m-%d')
 
             # Prevent reprocessing for the same date
@@ -621,11 +717,7 @@ class DigitalWellnessApp:
                 messagebox.showinfo("Smart Insights", "Insights already generated for today.")
                 return
 
-            if not os.path.exists('usage_log.csv'):
-                messagebox.showinfo("Smart Insights", "No usage data found.")
-                return
-
-            df = pd.read_csv('usage_log.csv')
+            df = pd.DataFrame(self.tracker.daily_store.rows(), columns=['date', 'app', 'duration'])
             if df.empty:
                 messagebox.showinfo("Smart Insights", "No usage data available.")
                 return
@@ -698,7 +790,7 @@ class DigitalWellnessApp:
             today_data = df[df['date'] == today_str]
             top_apps = today_data.groupby('app')['duration'].sum().sort_values(ascending=False).head(5)
 
-            total_usage = top_apps.sum()
+            total_usage = today_data['duration'].sum()
             recommendation += f"Total screen time: {self.format_time(total_usage)}\n\n"
             recommendation += "Top apps today:\n"
 
@@ -757,30 +849,6 @@ class DigitalWellnessApp:
             return "Unable to calculate trend"
 
 
-    def log_daily_usage(self):
-        today = datetime.now().strftime('%Y-%m-%d')
-        usage_data = defaultdict(float)
-
-        for app, data in self.tracker.session_data.items():
-            if app == self.tracker.current_app and self.tracker.start_time:
-                elapsed = time.time() - self.tracker.start_time
-                usage_data[app] = data['time'] + elapsed
-            else:
-                usage_data[app] = data['time']
-
-        if not usage_data:
-            return
-
-        if not os.path.exists('usage_log.csv'):
-            with open('usage_log.csv', 'w', encoding='utf-8') as f:
-                f.write("date,app,duration\n")
-
-        with open('usage_log.csv', 'a', encoding='utf-8') as f:
-            for app, duration in usage_data.items():
-                app_clean = app.replace('\u200b', '')
-                f.write(f"{today},{app_clean},{duration}\n")
-
-
     def format_time(self, seconds):
         """Format seconds into HH:MM:SS"""
         hours, remainder = divmod(seconds, 3600)
@@ -817,6 +885,10 @@ class DigitalWellnessApp:
 class ScreenTimeTracker:
     def __init__(self, gui=None):
         self.gui = gui
+        self.state_lock = threading.RLock()
+        self.stop_event = threading.Event()
+        self.daily_store = DailyUsageStore()
+        self.started_monotonic = None
         self.app_limits = {}
         self.warning_times = {}
         self.warned_apps = {}
@@ -938,107 +1010,116 @@ class ScreenTimeTracker:
         return False
 
     def track(self):
-        """Start tracking screen time"""
-        self.stop_requested = False
-        
-        while not self.stop_requested:
-            window_title, app_name = self.get_active_window_info()
-            
-            if not app_name:
-                time.sleep(1)
-                continue
-                
-            if app_name != self.current_app:
-                if self.current_app:
-                    self.log_app_usage(self.current_app, self.current_window)
-                    
-                self.current_app = app_name
-                self.current_window = window_title
-                self.start_time = time.time()
-                
-                self.warned_apps[app_name] = False
-                
-                # Overview rendering is owned by the GUI timer.
-                    
-            else:
-                elapsed = time.time() - self.start_time
-                app_total = self.session_data[app_name]['time'] + elapsed
-                
-                warning_time = self.warning_times.get(app_name)
-                if warning_time and app_total >= warning_time and not self.warned_apps.get(app_name, False):
-                    self.warned_apps[app_name] = True
-                    
+        """Commit samples while running; stop and recording share the same lock."""
+        failure = None
+        try:
+            while not self.stop_requested:
+                window_title, app_name = self.get_active_window_info()
+                with self.state_lock:
+                    if self.stop_requested:
+                        break
+                    if self.current_app:
+                        self.log_app_usage(self.current_app, self.current_window)
+                    self.current_app = app_name
+                    self.current_window = window_title
+                    self.start_time = time.time() if app_name else None
+                    self.started_monotonic = time.monotonic() if app_name else None
+                    day = datetime.now().date().isoformat()
+                    app_total = self.daily_store.usage(day).get(app_name, 0)
+                if app_name and not self.stop_requested:
+                    warning_time = self.warning_times.get(app_name)
+                    warning_key = (day, app_name)
+                    if warning_time and app_total >= warning_time and not self.warned_apps.get(warning_key):
+                        self.warned_apps[warning_key] = True
+                        remaining = max(0, int(self.app_limits.get(app_name, 0) - app_total))
+                        self.voice_alert(f"Warning: You have {remaining} seconds left for {app_name}")
                     limit = self.app_limits.get(app_name, 0)
-                    remaining = int(limit - app_total)
-                    
-                    warning_msg = f"Warning: You have {remaining} seconds left for {app_name}"
-                    
-                    self.voice_alert(warning_msg)
-                    
-                    if self.gui:
-                        self.gui.show_notification("Time Warning", warning_msg)
-                
-                limit = self.app_limits.get(app_name, 0)
-                if limit > 0 and app_total >= limit:
-                    self.log_app_usage(app_name, window_title)
-                    
-                    self.enforce_limit(app_name)
-                    
+                    if limit > 0 and app_total >= limit:
+                        self.enforce_limit(app_name)
+                self.stop_event.wait(1)
+        except Exception as error:
+            failure = str(error)
+        finally:
+            with self.state_lock:
+                try:
+                    if self.current_app:
+                        self.log_app_usage(self.current_app, self.current_window)
+                    self.save_config()
+                except Exception as error:
+                    failure = str(error)
+                finally:
                     self.current_app = None
                     self.current_window = None
                     self.start_time = None
-                    
-            time.sleep(1)
-        
-        if self.current_app:
-            self.log_app_usage(self.current_app, self.current_window)
-            
-        self.save_config()
+                    self.started_monotonic = None
+                    self.stop_requested = True
+            if self.gui:
+                if failure:
+                    self.gui.ui_actions.put(lambda message=failure: messagebox.showerror(
+                        "Tracking stopped", f"Could not save all usage: {message}"))
+                self.gui.ui_actions.put(self.gui.tracking_finished)
 
     def log_app_usage(self, app_name, window_title):
-        """Log app usage from current session"""
-        if not self.start_time:
-            return
-            
-        elapsed = time.time() - self.start_time
-        if elapsed < 1:  # Ignore very short sessions
-            return
-            
-        self.session_data[app_name]['time'] += elapsed
-        self.session_data[app_name]['windows'][window_title] += elapsed
-        
-        self.total_usage[app_name] += elapsed
-        
-        today = datetime.now().strftime('%Y-%m-%d')
-        log_file = f"logs/{today}.log"
-        
-        try:
-            with open(log_file, 'a') as f:
-                timestamp = datetime.now().strftime('%H:%M:%S')
-                f.write(f"{timestamp} | {app_name} | {window_title} | {elapsed:.2f}s\n")
-        except Exception as e:
-            print(f"Error writing to log: {e}")
-        
-        self.start_time = time.time()
+        with self.state_lock:
+            if self.start_time is None or self.started_monotonic is None:
+                return
+            now = time.monotonic()
+            elapsed = max(0, now - self.started_monotonic)
+            if elapsed <= 0:
+                return
+            # Advance the interval only after the durable write succeeds.
+            self.daily_store.record(app_name, self.start_time, elapsed)
+            self.session_data[app_name]["time"] += elapsed
+            self.session_data[app_name]["windows"][window_title] += elapsed
+            self.total_usage[app_name] += elapsed
+            self.start_time = time.time()
+            self.started_monotonic = now
 
     def stop_tracking(self):
-        """Stop the tracking process"""
-        self.stop_requested = True
-        
-        if self.current_app:
-            self.log_app_usage(self.current_app, self.current_window)
-            
-        self.current_app = None
-        self.current_window = None
-        self.start_time = None
-        
-        self.save_config()
+        self.stop_event.set()
+        with self.state_lock:
+            self.stop_requested = True
+            if self.current_app:
+                self.log_app_usage(self.current_app, self.current_window)
+            self.current_app = None
+            self.current_window = None
+            self.start_time = None
+            self.started_monotonic = None
+            self.save_config()
 
 
 def main():
+    # The tray can keep an instance alive after its window is closed. Prevent
+    # a second process from overwriting the first process's daily snapshots.
+    import msvcrt
     root = tk.Tk()
-    app = DigitalWellnessApp(root)
-    root.mainloop()
+    root.withdraw()
+    application_path = sys.executable if getattr(sys, 'frozen', False) else __file__
+    data_dir = Path(application_path).resolve().parent / 'data'
+    data_dir.mkdir(parents=True, exist_ok=True)
+    with open(data_dir / 'tracker.lock', 'a+b') as instance:
+        instance.seek(0, os.SEEK_END)
+        if instance.tell() == 0:
+            instance.write(b'0')
+            instance.flush()
+        instance.seek(0)
+        try:
+            msvcrt.locking(instance.fileno(), msvcrt.LK_NBLCK, 1)
+        except OSError:
+            messagebox.showinfo('Already running',
+                                'Digital Wellbeing Tracker is already running. Open it from the system tray.')
+            root.destroy()
+            return
+        try:
+            app = DigitalWellnessApp(root)
+            root.deiconify()
+            root.mainloop()
+        except Exception as error:
+            messagebox.showerror('Unable to start tracker', str(error))
+            root.destroy()
+        finally:
+            instance.seek(0)
+            msvcrt.locking(instance.fileno(), msvcrt.LK_UNLCK, 1)
 
 
 if __name__ == "__main__":

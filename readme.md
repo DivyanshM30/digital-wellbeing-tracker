@@ -11,14 +11,14 @@ GitHub HEAD was checked during this review: commit `73234d37e788983555d313a3adba
 ## Features
 
 - Foreground process and window-title monitoring, sampled roughly once per second.
-- Overview with Start/Pause controls, session summary cards, reusable application rows, and a horizontal usage chart. Light and dark palettes match the project's calm visual style.
+- Overview with Start/Pause controls, a Today/history selector, reusable application rows, and a horizontal usage chart. Daily totals survive restart; an optional This session view shows the current run.
 - Per-application limits and warning thresholds, entered in seconds.
 - Voice alerts, desktop notifications, and optional application termination.
 - Light/dark themes and system-tray controls.
-- Local JSON settings, text session logs, and CSV history.
+- Local JSON settings and atomic daily usage history, saved during tracking and on pause/exit.
 - Smart Insights using pandas and scikit-learn K-means clustering, requiring at least three dates of usage. These are statistical summaries, not an external AI service.
 
-**Current limitations:** foreground time includes idle time. Dashboard totals and limits use in-memory session data rather than reliable calendar-day totals. Repeated analysis can duplicate historical totals. See [the improvement review](IMPROVEMENTS.md).
+**Current limitations:** foreground time includes idle time, and suspend handling still needs improvement. Old undated cumulative totals and potentially duplicated CSV snapshots are not automatically imported into daily history. See [the improvement review](IMPROVEMENTS.md).
 
 ## Requirements
 
@@ -50,8 +50,8 @@ Run from the project directory: data paths resolve relative to the working direc
 1. Open **Settings** and choose alert preferences. **Auto Shutdown Apps at Limit defaults to enabled** on a fresh setup. Disable it for reminders without termination; closing a process can lose unsaved work. This option closes applications, not Windows.
 2. Select **Start Tracking**.
 3. In **App Limits**, use **Detect Apps** or enter a lowercase process name such as `chrome.exe`. Values are seconds: for example, a 3,600-second limit and a warning at 2,880 seconds of accumulated use.
-4. Switch applications and view the dashboard. Select **Stop Tracking** to pause collection.
-5. Use **Smart Insights → Analyze My Usage** after collecting at least three dates of history. Currently this action also writes CSV data, and repeated clicks can duplicate totals.
+4. Switch applications and view the Overview. **Today** combines usage across restarts, and the date selector lets you revisit recorded days. **This session** covers the current run only. Select **Pause Tracking** to pause collection.
+5. Use **Smart Insights → Analyze My Usage** after collecting at least three dates of new daily history. Analysis reads saved daily totals without appending duplicate snapshots.
 6. Closing the window hides it when minimizing to the tray is enabled; tracking can continue. Use the tray's exit action to quit.
 
 ## Data and privacy
@@ -62,11 +62,15 @@ The desktop implementation stores data locally in plain-text files:
 | --- | --- |
 | `config.json` | Limits, warning thresholds, and cumulative usage |
 | `app_settings.json` | UI and alert preferences; saved when the theme is applied |
-| `logs/YYYY-MM-DD.log` | Process names, window titles, timestamps, and durations |
-| `usage_log.csv` | `date,app,duration` records, with duration in seconds |
+| `data/daily_usage.json` | Per-date, per-application totals in seconds; authoritative daily history |
+| `data/tracker.lock` | Prevents a second running app instance from overwriting history |
+| `logs/YYYY-MM-DD.log` | Legacy window-title logs; retained but no longer written by this version |
+| `usage_log.csv` | Legacy analysis snapshots; retained but no longer used for new insights |
 | `error_log.txt` | Analysis errors |
 
-Window titles can contain document names or browser page titles. Treat logs as personal data and exclude them from source control. There is no retention or deletion UI. Exit the app before backing up or manually removing generated data.
+Daily history is saved in the `data` directory beside `main.py`, independent of the launch directory. Durations use a monotonic clock and intervals are split at local midnight. Each tracking sample is committed through an atomic file replacement; pause and exit save the final fraction of an interval. Abrupt termination can still lose the interval since the last successful sample, especially during a blocking speech alert. Only one instance can run at a time.
+
+Existing totals without dates cannot be reliably reconstructed into daily history. New dated history starts with this version; old CSV and log files remain untouched. Window titles remain in memory during a run but are not written to the new daily file. Legacy logs may contain document or browser page names. There is no retention or deletion UI; exit the app before backing up or removing data.
 
 The separate landing page uses local assets and system fonts, with no external font or icon scripts.
 
@@ -114,7 +118,7 @@ Expected output: `dist/DigitalWellbeingTracker.exe`. This recipe was not validat
 - **win32gui missing:** install dependencies using the same virtual-environment Python used to launch.
 - **Tkinter test fails:** repair Python's Tcl/Tk installation; a pip package alone does not provide it.
 - **No voice output:** check installed Windows voices and the Voice Alerts setting.
-- **No insights:** at least three distinct dates must exist in the usage CSV; current history-writing limitations affect results.
+- **No insights:** at least three recorded dates must exist in `data/daily_usage.json`; old CSV snapshots are not imported automatically.
 - **Window disappears:** check the Windows notification area for the tray icon.
 - **Different settings or totals:** launch from the same working directory. Back up data before switching prototypes, which use different configuration schemas.
 
@@ -126,7 +130,7 @@ Run the focused Overview regression tests with:
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 ```
 
-These checks cover session summaries, first-app visibility, paused totals, limit states, row reuse, and the UI timer without starting monitoring. They do not replace a Windows visual check. The Overview starts at 1100 × 820 with a minimum window size of 960 × 800; charts refresh every five seconds and usage rows every second.
+These checks cover summaries, paused totals, limit states, row reuse, the UI timer, restart persistence, midnight splits, repeated stop, and failed writes without starting monitoring. They do not replace a Windows visual check. The Overview starts at 1100 × 820 with a minimum window size of 960 × 800; charts refresh every five seconds and usage rows every second.
 
 CI is not configured. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for remaining correctness issues and proposed validation scenarios.
 

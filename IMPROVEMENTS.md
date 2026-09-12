@@ -8,22 +8,18 @@ Live GitHub HEAD is `73234d37e788983555d313a3adba4131bb75f6e2`, matching the cac
 
 ## 1. Fix usage accounting first
 
-**Duplicate history — main.py, analyze_usage and log_daily_usage.** Analysis appends cumulative session snapshots before checking whether insights were already generated. Later analysis sums those rows. Saving 60 seconds, then a cumulative 90 seconds, produces 150 seconds instead of 90. Even a repeated click that reports already-generated insights can append data.
+Implemented: daily totals now persist in `data/daily_usage.json` with atomic replacement on each tracking sample and final recording on pause/exit. Overview defaults to Today and supports previous recorded dates. Limits use restored daily usage. Monotonic durations are split at local midnight; repeated stop is idempotent. Analytics reads saved totals without appending CSV snapshots.
 
-Persist uniquely identified intervals once, independently of analysis, and derive daily totals from them. Alternatively, upsert snapshots keyed by session and date. Test that repeated analysis leaves totals unchanged.
+Legacy cumulative totals have no dates and old CSV snapshots may contain duplicates, so they are preserved without automatic migration. Window titles are refreshed each sample and remain in memory only; the new history stores app totals.
 
-**Daily boundaries and inactivity — track and log_daily_usage.** Limits use session_data, which is not restored as today's total or reset at midnight. CSV logging assigns the entire session to the date of analysis. Restarting loses the session limit baseline; crossing midnight mixes days. Idle and suspend time can also be counted.
-
-Use monotonic time for durations and wall-clock timestamps for reporting. Split intervals at midnight, restore today's totals, and handle idle/lock/suspend. Test restart, midnight, clock changes, and sleep/resume with a fake clock and foreground provider.
-
-**Stale window titles — track.** current_window changes only when the process changes. Switching documents or tabs inside one process retains the old title. Record title changes as new intervals, or omit titles when only app-level statistics are needed.
+Remaining: idle/lock/suspend handling, background speech to avoid delaying checkpoints, optional verified legacy import, and retention/export controls.
 
 ## 2. Make threading and shutdown reliable
 
-Overview redesign update: the tracking worker no longer renders the chart. A single UI timer updates the dashboard, and tray actions are dispatched through a queue. Usage rows are reused; totals are explicitly labeled as session totals. The remaining worker lifecycle and alert-thread issues below still need work.
+Overview redesign update: the tracking worker no longer renders the chart. A single UI timer updates the dashboard, and tray actions are dispatched through a queue. Usage rows are reused; totals follow the selected day or session. The remaining worker lifecycle and alert-thread issues below still need work.
 
 - **UI thread ownership:** dashboard rendering and tray callbacks now run through the main thread. Remaining alert code still reads Tk variables from the tracking worker; replace those reads with synchronized plain-value settings as part of the broader threading fix.
-- **Stop/start races:** GUI-side stop_tracking logs and clears the same state used by the worker, without a join or lock. exit_app can destroy the UI while work continues. Let the worker finalize exactly once after a stop event, then complete shutdown. Test rapid stop/start and exit during alerts.
+- **Stop/start:** recording and stop now share a lock and final intervals are cleared after saving, preventing duplicate finalization. A stop event wakes the worker. Background speech can still outlive the UI; decouple speech and coordinate full worker shutdown next.
 - **Blocking work:** clustering runs synchronously on the GUI thread, and speech runAndWait blocks its caller. Use separate analytics and speech workers and return results through the UI queue.
 
 ## 3. Correct settings and limit behavior
@@ -32,11 +28,11 @@ Overview redesign update: the tracking worker no longer renders the chart. A sin
 - Automatic termination defaults to enabled. Default to reminders, make termination an explicit choice, try graceful closure first, and exclude critical processes and the tracker.
 - enforce_limit selects the first matching process name, which may differ from the foreground process in a multi-process app. Retain the intended process identity and handle process exit before enforcement.
 - Limit dialogs accept negative values and inconsistent thresholds, and manual names are not normalized. Enforce 0 < warning < limit and normalize names.
-- Warning state resets on each foreground process change, allowing repeated alerts when returning to an app. Track daily threshold crossings and reminder cooldowns independently of focus.
+- Warning state is now keyed by date and app rather than focus changes. Persist warning state or add reminder cooldowns across restarts in a later change.
 
 ## 4. Fix insights before expanding the ML
 
-- analyze_usage labels the sum of the top five apps as total screen time. Compute totals across all apps and use the top five only for ranking. Test six or more apps.
+- Total screen time now includes all apps; only the displayed ranking is limited to five.
 - Cluster labels are ordered by total usage across every day in a cluster. Larger clusters can look high-usage despite having lower-usage individual days. Order by mean daily usage or an appropriate centroid statistic.
 - Handle identical-day data explicitly rather than presenting a single effective cluster as a meaningful low/high comparison.
 - schedule_auto_analysis schedules only one invocation. Schedule the next day after completion if automatic daily analysis is intended.
