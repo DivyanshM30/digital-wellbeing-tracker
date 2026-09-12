@@ -68,7 +68,7 @@ The desktop implementation stores data locally in plain-text files:
 
 Window titles can contain document names or browser page titles. Treat logs as personal data and exclude them from source control. There is no retention or deletion UI. Exit the app before backing up or manually removing generated data.
 
-The separate landing page loads external assets, including Google Fonts and Lucide icons.
+The separate landing page uses local assets and system fonts, with no external font or icon scripts.
 
 ## Project layout
 
@@ -78,14 +78,14 @@ requirements.txt           Python dependencies, currently unpinned
 index.html                 Static landing page
 landing_page/
   styles.css               Page styling
-  script.js                Interactions and download links
+  script.js                Copy-to-clipboard setup interaction
   pic/                     Landing-page images
   downloads/               Source archive and download assets
 readme.md                  Setup and usage
 IMPROVEMENTS.md            Prioritized review and suggested work
 ```
 
-Local prototypes, generated data, and Windows shortcuts may also appear. A `.lnk` is a shortcut, not an executable. The Windows download currently references one; use the source setup until a real release is available.
+Local prototypes, generated data, and Windows shortcuts may also appear. A `.lnk` is a shortcut, not an executable. The landing page now provides source installation instructions instead of linking to a shortcut; a verified installer is still needed.
 
 ## Preview the landing page
 
@@ -95,7 +95,7 @@ From the project root:
 .\.venv\Scripts\python.exe -m http.server 8000 --bind 127.0.0.1
 ```
 
-Open [the local page](http://127.0.0.1:8000). Press Ctrl+C to stop. No Node.js build step is required. macOS and Linux download actions display coming-soon messages.
+Open [the local page](http://127.0.0.1:8000). Press Ctrl+C to stop. No Node.js build step is required. The responsive page includes a project screenshot, setup commands, and expandable answers about data, limitations, and Windows support.
 
 ## Build a Windows executable
 

@@ -1,517 +1,68 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Digital Wellness Tracker - Desktop Application</title>
-    <link rel="stylesheet" href="landing_page/styles.css" />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap"
-      rel="stylesheet"
-    />
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
-  </head>
-  <body>
-    <!-- Hero Section -->
-<header class="hero-section">
-      <div class="container">
-        <div class="hero-content">
-          <div class="hero-text">
-            <div class="badge">
-              <i data-lucide="heart-pulse"></i>
-              Take Control of Your Screen Time
-            </div>
-            <h1>Digital Wellbeing Tracker</h1>
-            <p class="hero-subtitle">
-              Track, analyze, and improve your digital habits
-            </p>
-            <p class="hero-description">
-              A powerful desktop app that monitors your app usage in real-time, 
-              helps you set healthy limits, and provides insights to build better 
-              digital habits. All your data stays private on your device.
-            </p>
-            <div class="hero-buttons">
-              <button
-                class="btn btn-primary download-btn"
-                onclick="handleDownload('windows')"
-              >
-                <i data-lucide="download"></i>
-                <span>Download for Windows</span>
-              </button>
-              <button
-                class="btn btn-outline"
-                onclick="handleDownload('source')"
-              >
-                <i data-lucide="github"></i>
-                View Source Code
-              </button>
-            </div>
-            <!-- <div class="platform-buttons">
-                        <button class="btn btn-ghost" onclick="handleDownload('mac')">macOS</button>
-                        <button class="btn btn-ghost" onclick="handleDownload('linux')">Linux</button>
-                    </div> -->
-            <p class="creator">Created by Divyansh Mishra</p>
-          </div>
-          <div class="hero-image">
-            <div class="desktop-mockup">
-              <div class="window-frame">
-                <div class="window-header">
-                  <div class="window-controls">
-                    <div class="control red"></div>
-                    <div class="control yellow"></div>
-                    <div class="control green"></div>
-                  </div>
-                  <span class="window-title">Digital Wellness Tracker</span>
-                </div>
-                <div class="window-content">
-                  <img
-                    src="landing_page/pic/image.png"
-                    alt="Desktop App Screenshot"
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Understand your screen time with Digital Wellbeing Tracker, a local Windows desktop app for application usage, limits, and reminders.">
+  <meta name="theme-color" content="#f6f5ef">
+  <title>Digital Wellbeing Tracker — Make room for life</title>
+  <link rel="stylesheet" href="landing_page/styles.css">
+  <script src="landing_page/script.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+  <header class="site-header shell">
+    <a class="brand" href="#" aria-label="Digital Wellbeing Tracker home"><span class="brand-mark" aria-hidden="true">dw</span><span>digital wellbeing<span class="brand-caption">A little more intentional.</span></span></a>
+    <nav aria-label="Main navigation"><a href="#features">Features</a><a href="#how-it-works">How it works</a><a class="nav-cta" href="https://github.com/DivyanshM30/digital-wellbeing-tracker">GitHub <span aria-hidden="true">↗</span></a></nav>
+  </header>
+  <main id="main">
+    <section class="hero shell" aria-labelledby="hero-title">
+      <div class="hero-copy">
+        <p class="eyebrow"><span class="status-dot" aria-hidden="true"></span> BUILT FOR WINDOWS · STORED LOCALLY</p>
+        <h1 id="hero-title">Less autopilot.<br>More <em>intention.</em></h1>
+        <p class="hero-description">Your time deserves a little attention. See where it goes, set limits that work for you, and make room for life beyond the screen.</p>
+        <div class="hero-actions"><a class="button button-dark" href="#get-started">Get started <span aria-hidden="true">↗</span></a><a class="text-link" href="#preview">Take a look <span aria-hidden="true">↓</span></a></div>
+        <p class="hero-note">A Python desktop app. No account or API key needed.</p>
       </div>
-    </header>
-
-    <!-- Core Features Section -->
-    <section class="features-section">
-      <div class="container">
-        <div class="section-header">
-          <h2>Everything You Need</h2>
-          <p>
-            Powerful features designed to help you understand and improve your 
-            relationship with technology. Simple, effective, and completely private.
-          </p>
-        </div>
-        <div class="features-grid">
-          <div class="feature-card">
-            <div class="feature-icon">
-              <i data-lucide="activity"></i>
-            </div>
-            <h3>Real-Time Tracking</h3>
-            <p>
-              Automatically tracks which apps you're using and for how long. 
-              See exactly where your time goes with accurate, up-to-the-minute data.
-            </p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon">
-              <i data-lucide="brain"></i>
-            </div>
-            <h3>Smart Insights</h3>
-            <p>
-              Discover patterns in your usage with K-Means clustering analysis. 
-              Get personalized insights about your digital habits and see when 
-              you're most productive.
-            </p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon">
-              <i data-lucide="mic"></i>
-            </div>
-            <h3>Smart Reminders</h3>
-            <p>
-              Get gentle voice alerts and notifications when you're approaching 
-              your limits. Customize quiet hours so you're never interrupted 
-              during important moments.
-            </p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon">
-              <i data-lucide="bar-chart-3"></i>
-            </div>
-            <h3>Beautiful Charts</h3>
-            <p>
-              Visualize your usage with daily and weekly charts. See trends at 
-              a glance and understand your digital habits better with clear, 
-              easy-to-read graphs.
-            </p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon">
-              <i data-lucide="zap"></i>
-            </div>
-            <h3>Lightweight & Fast</h3>
-            <p>
-              Runs smoothly in the background without slowing down your computer. 
-              Efficient multithreaded design means you'll barely notice it's running.
-            </p>
-          </div>
-          <div class="feature-card">
-            <div class="feature-icon">
-              <i data-lucide="monitor"></i>
-            </div>
-            <h3>Privacy First</h3>
-            <p>
-              All your data stays on your device. No cloud sync, no tracking, 
-              no external servers. Your digital habits are yours alone.
-            </p>
-          </div>
-        </div>
+      <div class="hero-art" aria-label="Illustration of balancing screen time and time away">
+        <div class="orbit orbit-one"></div><div class="orbit orbit-two"></div>
+        <span class="art-label">A LITTLE SPACE TO RECONNECT</span>
+        <div class="balance-disc"><span class="disc-caption">BE PRESENT</span><span class="asterisk" aria-hidden="true">✳</span><span class="disc-bottom">one small habit at a time</span></div>
+        <div class="floating-note"><span class="note-icon" aria-hidden="true">↗</span><div>A moment for yourself.<small>It starts with awareness.</small></div></div>
+        <span class="art-bottom">YOUR SCREEN IS ONLY PART OF YOUR DAY.</span>
       </div>
     </section>
-
-    <!-- Technical Architecture Section -->
-    <section class="architecture-section">
-      <div class="container">
-        <div class="section-header">
-          <div class="badge">Technical Excellence</div>
-          <h2>Advanced Architecture & Technologies</h2>
-          <p>
-            Built with cutting-edge technologies and best practices for
-            performance, reliability, and user experience.
-          </p>
-        </div>
-        <div class="architecture-grid">
-          <div class="architecture-card blue">
-            <div class="card-decoration"></div>
-            <div class="architecture-icon">
-              <i data-lucide="activity"></i>
-            </div>
-            <h3>System Process Monitoring</h3>
-            <p>
-              Leverages Python's <code>psutil</code> library for comprehensive
-              system monitoring, tracking CPU usage, memory consumption, and
-              active processes with minimal system overhead.
-            </p>
-            <ul class="feature-list">
-              <li>
-                <i data-lucide="check"></i> Real-time application tracking
-              </li>
-              <li><i data-lucide="check"></i> Cross-platform compatibility</li>
-              <li><i data-lucide="check"></i> Low resource consumption</li>
-            </ul>
-          </div>
-          <div class="architecture-card purple">
-            <div class="card-decoration"></div>
-            <div class="architecture-icon">
-              <i data-lucide="brain"></i>
-            </div>
-            <h3>Machine Learning Intelligence</h3>
-            <p>
-              Advanced pattern recognition and predictive analytics to
-              understand user behavior, identify usage trends, and provide
-              intelligent recommendations for improved digital wellness.
-            </p>
-            <ul class="feature-list">
-              <li><i data-lucide="check"></i> Usage pattern analysis</li>
-              <li><i data-lucide="check"></i> Predictive behavior modeling</li>
-              <li><i data-lucide="check"></i> Personalized recommendations</li>
-            </ul>
-          </div>
-          <div class="architecture-card green">
-            <div class="card-decoration"></div>
-            <div class="architecture-icon">
-              <i data-lucide="bar-chart-3"></i>
-            </div>
-            <h3>Advanced Data Visualization</h3>
-            <p>
-              Comprehensive data visualization using
-              <code>matplotlib</code> with interactive charts, trend analysis,
-              and detailed reporting for actionable insights.
-            </p>
-            <ul class="feature-list">
-              <li>
-                <i data-lucide="check"></i> Daily & weekly tracking graphs
-              </li>
-              <li>
-                <i data-lucide="check"></i> Interactive statistical reports
-              </li>
-              <li><i data-lucide="check"></i> Trend analysis & forecasting</li>
-            </ul>
-          </div>
-        </div>
+    <div class="principles shell" aria-label="Project highlights"><span><span aria-hidden="true">◉</span> Understand your habits</span><span><span aria-hidden="true">◷</span> Set your own boundaries</span><span><span aria-hidden="true">⌂</span> Keep your data on your device</span></div>
+    <section class="section shell" id="features" aria-labelledby="features-title">
+      <div class="section-heading"><p class="eyebrow">SMALL TOOLS. MEANINGFUL HABITS.</p><h2 id="features-title">Start by noticing.<br>Then find your balance.</h2><p>You don’t need another productivity score. You need a clearer picture of how you spend your time.</p></div>
+      <div class="feature-grid">
+        <article class="feature"><span class="feature-number">01 / AWARENESS</span><div class="mini-bars" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div><h3>See where the hours go.</h3><p>Track the foreground application and explore your usage in a simple dashboard, with time broken down by app.</p></article>
+        <article class="feature"><span class="feature-number">02 / BOUNDARIES</span><div class="mini-clock" aria-hidden="true"><span></span></div><h3>A nudge when you need it.</h3><p>Choose application limits and warning thresholds. Voice reminders and desktop notifications help you notice when it’s time to pause.</p></article>
+        <article class="feature"><span class="feature-number">03 / REFLECTION</span><div class="mini-trend" aria-hidden="true"><span>↗</span><i></i><i></i><i></i></div><h3>Get to know your patterns.</h3><p>Explore statistical usage summaries after recording at least three days. Use them as a starting point for reflection.</p></article>
       </div>
     </section>
-
-    <!-- App Screenshots Section -->
-    <section class="screenshots-section">
-      <div class="container">
-        <div class="section-header">
-          <h2>Application Interface</h2>
-          <p>
-            Explore the intuitive desktop interface with real-time monitoring,
-            AI insights, and comprehensive analytics.
-          </p>
-        </div>
-        <div class="tabs-container">
-          <div class="tabs-list">
-            <button class="tab-trigger active" data-tab="dashboard">
-              <i data-lucide="monitor"></i>
-              Dashboard
-            </button>
-            <button class="tab-trigger" data-tab="analytics">
-              <i data-lucide="bar-chart-3"></i>
-              Analytics
-            </button>
-            <button class="tab-trigger" data-tab="insights">
-              <i data-lucide="brain"></i>
-              AI Insights
-            </button>
-            <button class="tab-trigger" data-tab="monitoring">
-              <i data-lucide="activity"></i>
-              Monitoring
-            </button>
-          </div>
-          <div class="tabs-content">
-            <div class="tab-content active" id="dashboard">
-              <div class="screenshot-container">
-                <div class="screenshot-frame">
-                  <img
-                    src="https://via.placeholder.com/960x600/f3f4f6/6b7280?text=Real-time+Dashboard+with+Live+Monitoring"
-                    alt="Dashboard Screenshot"
-                  />
-                </div>
-                <div class="screenshot-info">
-                  <h3>Real-time Monitoring Dashboard</h3>
-                  <p>
-                    Live system monitoring with active application tracking and
-                    usage statistics.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div class="tab-content" id="analytics">
-              <div class="screenshot-container">
-                <div class="screenshot-frame">
-                  <img
-                    src="https://via.placeholder.com/960x600/f3f4f6/6b7280?text=Advanced+Analytics+with+Matplotlib+Charts"
-                    alt="Analytics Screenshot"
-                  />
-                </div>
-                <div class="screenshot-info">
-                  <h3>Advanced Analytics & Visualization</h3>
-                  <p>
-                    Comprehensive charts and graphs showing daily and weekly
-                    usage patterns.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div class="tab-content" id="insights">
-              <div class="screenshot-container">
-                <div class="screenshot-frame">
-                  <img
-                    src="https://via.placeholder.com/960x600/f3f4f6/6b7280?text=Machine+Learning+Insights+and+Predictions"
-                    alt="AI Insights Screenshot"
-                  />
-                </div>
-                <div class="screenshot-info">
-                  <h3>AI-Powered Usage Insights</h3>
-                  <p>
-                    Machine learning analysis of usage patterns with predictive
-                    recommendations.
-                  </p>
-                </div>
-              </div>
-            </div>
-            <div class="tab-content" id="monitoring">
-              <div class="screenshot-container">
-                <div class="screenshot-frame">
-                  <img
-                    src="https://via.placeholder.com/960x600/f3f4f6/6b7280?text=System+Monitoring+and+Voice+Alert+Settings"
-                    alt="Monitoring Settings Screenshot"
-                  />
-                </div>
-                <div class="screenshot-info">
-                  <h3>System Monitoring & Voice Alerts</h3>
-                  <p>
-                    Configure monitoring settings and customize voice reminder
-                    preferences.
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+    <section class="preview-section" id="preview" aria-labelledby="preview-title">
+      <div class="shell">
+        <div class="preview-heading"><div><p class="eyebrow">A CLOSER LOOK</p><h2 id="preview-title">Your habits, in view.</h2></div><p>A desktop dashboard for checking in.<br>Light and dark themes included.</p></div>
+        <figure class="app-preview"><div class="window-bar"><span class="window-dot" aria-hidden="true"></span><span>Digital Wellbeing Tracker</span><span class="window-platform">WINDOWS DESKTOP</span></div><img src="landing_page/pic/image.png" alt="Digital Wellbeing Tracker desktop interface showing application usage and tracking controls" loading="lazy"><figcaption>Project screenshot · The interface may vary by version.</figcaption></figure>
       </div>
     </section>
-
-    <!-- Technical Implementation Section -->
-    <section class="implementation-section">
-      <div class="container">
-        <div class="section-header">
-          <h2>Technical Implementation</h2>
-          <p>
-            Built with modern Python technologies and best practices for
-            performance, reliability, and user experience.
-          </p>
-        </div>
-        <div class="implementation-grid">
-          <div class="implementation-card">
-            <div class="card-header">
-              <div class="card-title">
-                <i data-lucide="computer"></i>
-                Core Technologies
-              </div>
-              <p class="card-description">
-                Python-based desktop application stack
-              </p>
-            </div>
-            <div class="card-content">
-              <ul class="tech-list">
-                <li>
-                  <i data-lucide="check"></i>
-                  <div>
-                    <strong>psutil</strong> - System and process monitoring
-                  </div>
-                </li>
-                <li>
-                  <i data-lucide="check"></i>
-                  <div>
-                    <strong>pyttsx3</strong> - Text-to-speech voice alerts
-                  </div>
-                </li>
-                <li>
-                  <i data-lucide="check"></i>
-                  <div>
-                    <strong>matplotlib</strong> - Advanced data visualization
-                  </div>
-                </li>
-                <li>
-                  <i data-lucide="check"></i>
-                  <div>
-                    <strong>Threading</strong> - Responsive UI with background
-                    processing
-                  </div>
-                </li>
-              </ul>
-            </div>
-          </div>
-          <div class="implementation-card">
-            <div class="card-header">
-              <div class="card-title">
-                <i data-lucide="brain"></i>
-                AI & Machine Learning
-              </div>
-              <p class="card-description">
-                Intelligent pattern analysis and predictions
-              </p>
-            </div>
-            <div class="card-content">
-              <ul class="tech-list">
-                <li>
-                  <i data-lucide="check"></i>
-                  <div>
-                    <strong>Pattern Recognition</strong> - Identify usage trends
-                  </div>
-                </li>
-                <li>
-                  <i data-lucide="check"></i>
-                  <div>
-                    <strong>Behavioral Analysis</strong> - Understand user
-                    habits
-                  </div>
-                </li>
-                <li>
-                  <i data-lucide="check"></i>
-                  <div>
-                    <strong>Predictive Modeling</strong> - Forecast usage
-                    patterns
-                  </div>
-                </li>
-                <li>
-                  <i data-lucide="check"></i>
-                  <div>
-                    <strong>Smart Recommendations</strong> - Personalized
-                    insights
-                  </div>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <!-- Call to Action Section -->
-    <section class="cta-section">
-      <div class="container">
-        <div class="cta-content">
-          <h2>Start Your Journey to Better Digital Wellness</h2>
-          <p>
-            Download the app and take the first step toward healthier screen time habits. 
-            Free, open-source, and completely private.
-          </p>
-          <div class="cta-buttons">
-            <button class="btn btn-primary" onclick="handleDownload('windows')">
-              <i data-lucide="download"></i>
-              Download for Windows
-            </button>
-            <button class="btn btn-outline" onclick="handleDownload('source')">
-              <i data-lucide="github"></i>
-              View Source Code
-            </button>
-          </div>
-          <!-- <div class="platform-buttons">
-                    <button class="btn btn-ghost" onclick="handleDownload('mac')">Download for macOS</button>
-                    <button class="btn btn-ghost" onclick="handleDownload('linux')">Download for Linux</button>
-                </div> -->
-        </div>
-      </div>
-    </section>
-
-    <!-- Footer -->
-    <footer class="footer">
-      <div class="container">
-        <div class="footer-content">
-          <div class="footer-section">
-            <h3>Digital Wellbeing Tracker</h3>
-            <p>Take control of your screen time</p>
-            <p style="margin-top: 1rem;">Made with ❤️ by Divyansh Mishra</p>
-          </div>
-          <div class="footer-section">
-            <h3>Key Features</h3>
-            <ul>
-              <li>Real-time System Monitoring</li>
-              <li>Machine Learning Analysis</li>
-              <li>Voice Alert System</li>
-              <li>Advanced Data Visualization</li>
-              <li>Cross-platform Desktop GUI</li>
-              <li>Multithreaded Performance</li>
-            </ul>
-          </div>
-          <div class="footer-section">
-            <h3>Technologies</h3>
-            <ul>
-              <li><i data-lucide="computer"></i> Python Desktop Application</li>
-              <li><i data-lucide="activity"></i> psutil System Monitoring</li>
-              <li><i data-lucide="mic"></i> pyttsx3 Voice Alerts</li>
-              <li>
-                <i data-lucide="bar-chart-3"></i> matplotlib Visualization
-              </li>
-            </ul>
-          </div>
-        </div>
-        <div class="footer-bottom">
-            <!-- //add github and linkedin links -->
-            <div class="flex justify-center items-center gap-4 mb-1">
-              <a
-                href="https://github.com/DivyanshM30/"
-                target="_blank"
-                class="text-white hover:text-emerald-400"
-                aria-label="GitHub"
-              >
-                <i data-lucide="github" class="w-5 h-5"></i>
-              </a>
-              <a
-                href="https://www.linkedin.com/in/divyanshm30/"
-                target="_blank"
-                class="text-white hover:text-blue-400"
-                aria-label="LinkedIn"
-              >
-                <i data-lucide="linkedin" class="w-5 h-5"></i>
-              </a>
-            </div>
-            <p>&copy; 2025 Digital Wellbeing Tracker. All rights reserved.</p>
-        </div>
-      </div>
-    </footer>
-
-    <script src="landing_page/script.js"></script>
-  </body>
+    <section class="section shell how-section" id="how-it-works" aria-labelledby="how-title"><div><p class="eyebrow">MAKE IT YOURS</p><h2 id="how-title">A gentler routine,<br>in three steps.</h2><p class="section-intro">Start small. The goal is to make your time feel more like your own.</p></div><ol class="steps"><li><span>01</span><div><h3>Start tracking</h3><p>Launch the Windows app and press Start Tracking to observe foreground application time.</p></div></li><li><span>02</span><div><h3>Choose your boundaries</h3><p>Add limits for the apps you want to be more intentional about. Choose your alert preferences in Settings.</p></div></li><li><span>03</span><div><h3>Check in and adjust</h3><p>Review your usage, notice your patterns, and adjust your limits to fit your day.</p></div></li></ol></section>
+    <section class="start-section shell" id="get-started" aria-labelledby="start-title"><div class="start-copy"><p class="eyebrow">READY WHEN YOU ARE</p><h2 id="start-title">Make a little<br>room for yourself.</h2><p>Run the project from source on Windows with Python and Tcl/Tk installed.</p><a class="text-link" href="https://github.com/DivyanshM30/digital-wellbeing-tracker#readme">Read the setup guide <span aria-hidden="true">↗</span></a></div><div class="install-panel"><div class="install-header"><span>POWERSHELL</span><button id="copy-command" type="button" hidden>Copy commands</button></div><pre><code id="install-command">git clone https://github.com/DivyanshM30/digital-wellbeing-tracker.git
+cd digital-wellbeing-tracker
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe main.py</code></pre><p id="copy-status" class="copy-status" role="status" aria-live="polite"></p><p class="install-note">Source installation only. A verified Windows installer is not provided on this page.</p></div></section>
+    <section class="project-notes shell" aria-labelledby="notes-title"><h2 id="notes-title">A few things to know</h2><details><summary>What does the tracker record?</summary><p>The app stores process names, window titles, and usage durations locally in plain-text files. Window titles can contain document or page names. The current version has no automatic retention controls.</p></details><details><summary>How accurate are the totals?</summary><p>This is a project in development. Idle time is currently included, daily rollover needs improvement, and repeated analysis can duplicate history. Treat the summaries as exploratory. See the <a href="https://github.com/DivyanshM30/digital-wellbeing-tracker/blob/main/IMPROVEMENTS.md">improvement review</a> for details.</p></details><details><summary>Will it close my applications?</summary><p>“Auto Shutdown Apps at Limit” defaults to enabled on a fresh setup and can close an application with unsaved work. Turn it off in Settings before tracking if you want reminders without termination.</p></details><details><summary>Does it support macOS or Linux?</summary><p>The current main.py implementation uses Windows APIs. macOS and Linux are not currently supported.</p></details></section>
+  </main>
+  <footer class="shell site-footer">
+    <a class="brand" href="#"><span class="brand-mark" aria-hidden="true">dw</span><span>digital wellbeing</span></a>
+    <p>Made with intention by Divyansh Mishra.</p>
+    <nav class="footer-links" aria-label="Connect with Divyansh">
+      <a href="https://www.linkedin.com/in/divyanshm30/" target="_blank" rel="noopener noreferrer">LinkedIn <span aria-hidden="true">↗</span></a>
+      <a href="https://github.com/DivyanshM30" target="_blank" rel="noopener noreferrer">GitHub <span aria-hidden="true">↗</span></a>
+      <a href="https://divyanshm.dev/" target="_blank" rel="noopener noreferrer">Portfolio <span aria-hidden="true">↗</span></a>
+    </nav>
+  </footer>
+</body>
 </html>
