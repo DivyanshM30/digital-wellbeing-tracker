@@ -7,6 +7,7 @@ import math
 import os
 from pathlib import Path
 import queue
+import re
 import sys
 import tempfile
 import threading
@@ -19,7 +20,7 @@ from unittest.mock import Mock, patch
 tree = ast.parse((Path(__file__).resolve().parents[1] / 'main.py').read_text(encoding='utf-8'))
 namespace = dict(Path=Path, threading=threading, datetime=datetime, timedelta=timedelta,
                  tempfile=tempfile, math=math, json=json, os=os, time=time, queue=queue,
-                 sys=sys, defaultdict=defaultdict, __file__=str(Path(__file__).resolve().parents[1] / 'main.py'))
+                 sys=sys, re=re, defaultdict=defaultdict, __file__=str(Path(__file__).resolve().parents[1] / 'main.py'))
 classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]
 exec(compile(ast.Module(body=classes, type_ignores=[]), 'main.py', 'exec'), namespace)
 Store = namespace['DailyUsageStore']
@@ -28,6 +29,33 @@ App = namespace['DigitalWellnessApp']
 
 
 class DailyUsageTests(unittest.TestCase):
+    def test_legacy_recovery_preserves_existing_days_and_is_idempotent(self):
+        logs = Path(self.temporary.name) / 'logs'
+        logs.mkdir()
+        (logs / '2026-09-11.log').write_bytes(b'12:00:00 | a.exe | Title \xb7 private | 3600.50s\n')
+        (logs / '2026-09-12.log').write_text('12:00:00 | a.exe | Title | 999s\n')
+        (logs / '2026-09-13.log').write_text('12:00:00 | a.exe | Title | 999s\n')
+        self.store.record('existing.exe', self.start, 60)
+        before = self.path.read_bytes()
+        result = self.store.recover_legacy_logs(logs, today=datetime(2026, 9, 13).date())
+        self.assertEqual(result, ['2026-09-11'])
+        self.assertEqual(self.store.usage('2026-09-11'), {'a.exe': 3600.5})
+        self.assertEqual(self.store.usage('2026-09-12'), {'existing.exe': 60})
+        self.assertEqual(self.store.usage('2026-09-13'), {})
+        self.assertEqual((self.path.parent / 'daily_usage.before-legacy-import.json').read_bytes(), before)
+        reopened = Store(self.path)
+        self.assertEqual(reopened.recover_legacy_logs(logs, today=datetime(2026, 9, 13).date()), [])
+        self.assertEqual(reopened.recovered_days, ['2026-09-11'])
+
+    def test_legacy_recovery_skips_malformed_and_impossible_logs(self):
+        logs = Path(self.temporary.name) / 'logs'
+        logs.mkdir()
+        (logs / '2026-09-10.log').write_text('12:00:00 | a.exe | Title | 20s\nbad line')
+        (logs / '2026-09-11.log').write_text('99:00:00 | a.exe | Title | 20s')
+        (logs / '2026-09-12.log').write_text('12:00:00 | a.exe | Title | 90000s')
+        self.assertEqual(self.store.recover_legacy_logs(logs, today=datetime(2026, 9, 13).date()), [])
+        self.assertFalse(self.path.exists())
+
     def test_weekly_history_includes_all_apps_and_elapsed_days(self):
         for index in range(8):
             self.store.record(f'app{index}.exe', datetime(2026, 9, 7, 12).timestamp(), 60)

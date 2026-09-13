@@ -2,6 +2,7 @@ import os
 import time
 import json
 import math
+import re
 import tempfile
 from pathlib import Path
 from datetime import datetime, timedelta
@@ -32,6 +33,7 @@ class DailyUsageStore:
         self.path = Path(path) if path else Path(application_path).resolve().parent / 'data' / 'daily_usage.json'
         self.lock = threading.RLock()
         self.days = {}
+        self.recovered_days = []
         if self.path.exists():
             payload = json.loads(self.path.read_text(encoding='utf-8'))
             if payload.get('version') != 1:
@@ -43,6 +45,7 @@ class DailyUsageStore:
                         or not math.isfinite(value) or value < 0 for app, value in apps.items()):
                     raise ValueError('Invalid daily usage data; file left unchanged')
             self.days = payload['days']
+            self.recovered_days = payload.get('recovered_days', [])
 
     def record(self, app, started, seconds):
         if not math.isfinite(seconds):
@@ -60,20 +63,70 @@ class DailyUsageStore:
                 apps[app] = apps.get(app, 0) + part
                 remaining -= part
                 cursor = midnight
-            self.path.parent.mkdir(parents=True, exist_ok=True)
-            temporary = None
-            try:
-                with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=self.path.parent,
-                        prefix='.daily-', suffix='.tmp', delete=False) as output:
-                    temporary = output.name
-                    json.dump({'version': 1, 'days': updated}, output, indent=2)
-                    output.flush()
-                    os.fsync(output.fileno())
-                os.replace(temporary, self.path)
-            finally:
-                if temporary and os.path.exists(temporary):
-                    os.unlink(temporary)
-            self.days = updated
+            self.commit(updated)
+
+    def commit(self, updated, recovered=None):
+        recovered = self.recovered_days if recovered is None else recovered
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        temporary = None
+        try:
+            with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=self.path.parent,
+                    prefix='.daily-', suffix='.tmp', delete=False) as output:
+                temporary = output.name
+                json.dump({'version': 1, 'days': updated, 'recovered_days': recovered}, output, indent=2)
+                output.flush()
+                os.fsync(output.fileno())
+            os.replace(temporary, self.path)
+        finally:
+            if temporary and os.path.exists(temporary):
+                os.unlink(temporary)
+        self.days = updated
+        self.recovered_days = recovered
+
+    def recover_legacy_logs(self, directory, today=None):
+        """Import complete, missing past days only; never merge overlapping data."""
+        today = today or datetime.now().date()
+        with self.lock:
+            updated = {day: apps.copy() for day, apps in self.days.items()}
+            recovered = []
+            for path in sorted(Path(directory).glob('????-??-??.log')):
+                try:
+                    day = datetime.strptime(path.stem, '%Y-%m-%d').date()
+                except ValueError:
+                    continue
+                if day >= today or path.stem in updated:
+                    continue
+                # Older Windows versions wrote titles in a locale encoding.
+                # Replacement characters affect titles only, never parsed amounts.
+                lines = path.read_bytes().decode('utf-8', errors='replace').splitlines()
+                totals = defaultdict(float)
+                valid = True
+                for line in lines:
+                    if not line.strip():
+                        continue
+                    match = re.fullmatch(r'(\d{2}:\d{2}:\d{2}) \| ([^|]+) \| .* \| (\d+(?:\.\d+)?)s', line)
+                    if not match:
+                        valid = False
+                        break
+                    try:
+                        datetime.strptime(match[1], '%H:%M:%S')
+                        amount = float(match[3])
+                        if not math.isfinite(amount) or amount < 0 or amount > 86400:
+                            raise ValueError()
+                    except ValueError:
+                        valid = False
+                        break
+                    totals[match[2].strip().lower()] += amount
+                if valid and totals and sum(totals.values()) <= 86400:
+                    updated[path.stem] = dict(totals)
+                    recovered.append(path.stem)
+            if recovered:
+                backup = self.path.with_name('daily_usage.before-legacy-import.json')
+                if self.path.exists() and not backup.exists():
+                    with backup.open('xb') as output:
+                        output.write(self.path.read_bytes())
+                self.commit(updated, self.recovered_days + recovered)
+            return recovered
 
     def usage(self, day):
         with self.lock:
@@ -215,8 +268,10 @@ class DigitalWellnessApp:
         self.history_next = ttk.Button(controls, text="Next →", command=lambda: self.move_history(1))
         self.history_next.pack(side="left")
         ttk.Button(controls, text="Today", command=self.history_today).pack(side="left", padx=6)
+        ttk.Button(controls, text="Yesterday", command=self.history_yesterday).pack(side="left")
         self.history_feedback = self.ui_label(self.history_frame,
             "Enter a date as YYYY-MM-DD. Weeks run Monday to Sunday.", 9, color="muted")
+        self.history_feedback.configure(wraplength=880, justify='left')
         self.history_feedback.pack(anchor="w", padx=26, pady=(0, 12))
         summary = self.ui_frame(self.history_frame, "card", padx=18, pady=12)
         summary.pack(fill="x", padx=26, pady=(0, 12))
@@ -224,6 +279,8 @@ class DigitalWellnessApp:
         self.history_heading.pack(anchor="w")
         self.history_summary = self.ui_label(summary, "", 11, "card", "muted")
         self.history_summary.pack(anchor="w", pady=(5, 0))
+        self.history_scope = self.ui_label(summary, '', 10, 'card', 'accent')
+        self.history_scope.pack(anchor='w', pady=(5, 0))
         chart_card = self.ui_frame(self.history_frame, "card", padx=12, pady=8)
         chart_card.pack(fill="x", padx=26, pady=(0, 12))
         self.history_chart_title = self.ui_label(chart_card, "Daily totals for this week", 11, "card")
@@ -238,7 +295,8 @@ class DigitalWellnessApp:
         bottom.pack(fill="both", expand=True, padx=26, pady=(0, 16))
         toolbar = self.ui_frame(bottom, "card")
         toolbar.pack(fill="x", pady=(0, 10))
-        self.ui_label(toolbar, "All applications", 14, "card").pack(side="left")
+        self.history_table_title = self.ui_label(toolbar, "All applications", 14, "card")
+        self.history_table_title.pack(side="left")
         self.history_clear = ttk.Button(toolbar, text="Show all apps", command=self.clear_history_app)
         self.history_clear.pack(side="right")
         table = self.ui_frame(bottom, "card")
@@ -254,6 +312,22 @@ class DigitalWellnessApp:
         scroll.pack(side="right", fill="y")
         self.history_tree.pack(fill="both", expand=True)
         self.history_tree.bind("<<TreeviewSelect>>", self.select_history_app)
+
+    @staticmethod
+    def readable_duration(seconds):
+        seconds = max(0, int(seconds))
+        hours, rest = divmod(seconds, 3600)
+        minutes, seconds = divmod(rest, 60)
+        if hours:
+            return f'{hours} hr {minutes} min'
+        if minutes:
+            return f'{minutes} min {seconds} sec' if seconds else f'{minutes} min'
+        return f'{seconds} sec'
+
+    def history_yesterday(self):
+        self.history_mode.set('Daily')
+        self.history_date.set((datetime.now().date() - timedelta(days=1)).isoformat())
+        self.refresh_history()
 
     def history_today(self):
         self.history_date.set(datetime.now().date().isoformat())
@@ -298,7 +372,7 @@ class DigitalWellnessApp:
             if item not in expected:
                 self.history_tree.delete(item)
         for index, (app, seconds) in enumerate(snapshot["apps"].items()):
-            values = (app, self.format_time(seconds), f"{seconds / total:.1%}" if total else "0%")
+            values = (app, self.readable_duration(seconds), f"{seconds / total:.1%}" if total else "0%")
             if self.history_tree.exists(app):
                 self.history_tree.item(app, values=values)
                 self.history_tree.move(app, "", index)
@@ -310,11 +384,14 @@ class DigitalWellnessApp:
         if self.history_mode.get() == "Weekly":
             current = anchor + timedelta(days=6 - anchor.weekday()) >= today
         self.history_next.configure(state="disabled" if current else "normal")
-        self.history_feedback.configure(text=(
-            f"{snapshot['recorded']} of {snapshot['days']} elapsed calendar days have records. "
-            "No record does not necessarily mean no screen use. Idle time is included."
-            if snapshot["apps"] else
-            "No recorded usage for this period. Choose another date or start tracking in Overview."))
+        recovered = any(snapshot['start'] <= day <= snapshot['end']
+                        for day in getattr(self.tracker.daily_store, 'recovered_days', []))
+        feedback = ('Recovered from older tracking logs. Original logs are preserved. ' if recovered else '')
+        feedback += (f"Recorded on {snapshot['recorded']} of {snapshot['days']} days. Idle time is included."
+                     if snapshot['apps'] else
+                     'No saved records for this period. This does not mean you used your computer for zero minutes.')
+        self.history_feedback.configure(text=feedback)
+        self.history_table_title.configure(text=f"Applications · {len(snapshot['apps'])} recorded · sorted by time")
         self.draw_history()
         self.history_refresh_time = time.monotonic()
 
@@ -324,14 +401,20 @@ class DigitalWellnessApp:
             return
         scope = self.history_app or "All apps"
         total = data["apps"].get(self.history_app, 0) if self.history_app else sum(data["apps"].values())
-        period = data["start"] if data["start"] == data["end"] else f"{data['start']} → {data['end']}"
-        self.history_heading.configure(text=f"{period} · {scope}")
+        start = datetime.strptime(data['start'], '%Y-%m-%d')
+        end = datetime.strptime(data['end'], '%Y-%m-%d')
+        period = start.strftime('%A, %d %B %Y') if data['start'] == data['end'] else (
+            start.strftime('%d %b') + ' – ' + end.strftime('%d %b %Y'))
+        self.history_heading.configure(text=period)
         average = total / data["days"]
-        self.history_summary.configure(text=f"Tracked time: {self.format_time(total)}"
-            + (f"     Daily average: {self.format_time(average)} (elapsed calendar days)"
+        self.history_summary.configure(text=f"Time recorded: {self.readable_duration(total)}"
+            + (f"     Daily average: {self.readable_duration(average)} (across {data['days']} calendar days)"
                if self.history_mode.get() == "Weekly" else ""))
+        self.history_scope.configure(text=f'App focus: {scope} · Show all apps to clear this filter'
+                                     if self.history_app else 'Showing all apps · Select a row below to focus on an app')
         self.history_clear.configure(state="normal" if self.history_app else "disabled")
-        self.history_chart_title.configure(text=f"{scope} · Daily totals for the selected week · Click a bar to view that day")
+        self.history_chart_title.configure(text=('This week for context · Selected day highlighted · Click a day to open it'
+            if self.history_mode.get() == 'Daily' else 'Week at a glance · Click a day to open its breakdown'))
         ax = self.history_ax
         ax.clear()
         self.history_figure.set_facecolor(self.palette["card"])
@@ -339,20 +422,24 @@ class DigitalWellnessApp:
         self.history_canvas.get_tk_widget().configure(background=self.palette["card"])
         values = [entry["apps"].get(self.history_app, 0) if self.history_app else sum(entry["apps"].values())
                   for entry in data["chart"]]
-        ax.bar(range(7), [value / 3600 for value in values], width=.55,
+        unit = 60 if max(values, default=0) < 3600 else 3600
+        ax.bar(range(7), [value / unit for value in values], width=.55,
                       color=[self.palette["accent"] if entry["date"] == self.history_anchor
                              else self.palette["muted"] for entry in data["chart"]])
         labels = []
         for index, entry in enumerate(data["chart"]):
             date = datetime.strptime(entry["date"], "%Y-%m-%d")
             labels.append(date.strftime("%a\n%d %b"))
+            if values[index] > 0:
+                ax.text(index, values[index] / unit, self.readable_duration(values[index]),
+                        ha='center', va='bottom', fontsize=8, color=self.palette['ink'])
             if not entry["recorded"] or entry["future"]:
                 ax.text(index, .03, "Future" if entry["future"] else "No data",
                          ha="center", fontsize=8, color=self.palette["muted"],
                          transform=ax.get_xaxis_transform())
         ax.set_xticks(range(7), labels)
-        ax.set_ylabel("Hours", color=self.palette["muted"], fontsize=9)
-        ax.set_ylim(0, max(1, max(values, default=0) / 3600 * 1.25))
+        ax.set_ylabel('Minutes' if unit == 60 else 'Hours', color=self.palette["muted"], fontsize=9)
+        ax.set_ylim(0, max(1, max(values, default=0) / unit * 1.3))
         ax.yaxis.set_major_locator(plt.MaxNLocator(3))
         ax.tick_params(colors=self.palette["muted"], labelsize=9, length=0)
         ax.yaxis.grid(True, color=self.palette["track"], linewidth=.6)
@@ -1333,6 +1420,7 @@ class ScreenTimeTracker:
         self.state_lock = threading.RLock()
         self.stop_event = threading.Event()
         self.daily_store = DailyUsageStore()
+        self.daily_store.recover_legacy_logs(self.daily_store.path.parent.parent / 'logs')
         self.started_monotonic = None
         self.app_limits = {}
         self.warning_times = {}

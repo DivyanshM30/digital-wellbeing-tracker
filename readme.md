@@ -59,7 +59,7 @@ Run from the project directory: data paths resolve relative to the working direc
 
 ### Browse your history
 
-Open **History** in the sidebar and choose **Daily** or **Weekly**. Use Previous/Next, Today, or enter a date as `YYYY-MM-DD` and press Enter or Go. Weeks run Monday through Sunday. Future dates cannot be selected.
+Open **History** in the sidebar and choose **Daily** or **Weekly**. Use Previous/Next, Today, Yesterday, or enter a date as `YYYY-MM-DD` and press Enter or Go. Weeks run Monday through Sunday. Future dates cannot be selected. Dates and durations are shown in readable form, and app-specific filters are explicitly labeled.
 
 The chart shows the week containing the selected date. Click a day's bar to open its daily breakdown. The table includes all recorded apps, sorted by duration, with their percentage of the entire selected period. Selecting a row filters the summary and chart to that app; **Show all apps** restores the overall view.
 
@@ -81,7 +81,9 @@ The desktop implementation stores data locally in plain-text files:
 
 Daily history is saved in the `data` directory beside `main.py`, independent of the launch directory. Durations use a monotonic clock and intervals are split at local midnight. Each tracking sample is committed through an atomic file replacement; pause and exit save the final fraction of an interval. Abrupt termination can still lose the interval since the last successful sample, especially during a blocking speech alert. Only one instance can run at a time.
 
-Existing totals without dates cannot be reliably reconstructed into daily history. New dated history starts with this version; old CSV and log files remain untouched. Window titles remain in memory during a run but are not written to the new daily file. Legacy logs may contain document or browser page names. There is no retention or deletion UI; exit the app before backing up or removing data.
+At startup, valid dated `logs/YYYY-MM-DD.log` files recover missing past days into daily history. Existing daily records and the current day are never merged or overwritten. Malformed files and implausible totals are skipped. Before recovery changes an existing history file, a copy is saved as `data/daily_usage.before-legacy-import.json`. History labels recovered periods; original logs remain untouched. Fully exit the tray app and restart to run recovery after upgrading.
+
+Undated totals and potentially duplicated CSV snapshots cannot be reliably reconstructed and are not imported. Recovered totals reflect what older logs recorded, including their existing tracking limitations. Window titles remain in memory during a run and are not copied into the daily file. Legacy logs may contain document or browser page names. There is no retention or deletion UI; exit the app before backing up or removing data.
 
 The separate landing page uses local assets and system fonts, with no external font or icon scripts.
 

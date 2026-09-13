@@ -10,9 +10,9 @@ Live GitHub HEAD is `73234d37e788983555d313a3adba4131bb75f6e2`, matching the cac
 
 Implemented: daily totals now persist in `data/daily_usage.json` with atomic replacement on each tracking sample and final recording on pause/exit. Overview defaults to Today and supports previous recorded dates. Limits use restored daily usage. Monotonic durations are split at local midnight; repeated stop is idempotent. Analytics reads saved totals without appending CSV snapshots.
 
-Legacy cumulative totals have no dates and old CSV snapshots may contain duplicates, so they are preserved without automatic migration. Window titles are refreshed each sample and remain in memory only; the new history stores app totals.
+Missing past days now recover from validated dated text logs at startup, with a backup before migration and no merging into existing dates. Undated cumulative totals and old CSV snapshots are still excluded. Recovered days are marked in History; original logs remain untouched. Window titles are not copied into daily history.
 
-Remaining: idle/lock/suspend handling, background speech to avoid delaying checkpoints, optional verified legacy import, and retention/export controls.
+Remaining: idle/lock/suspend handling, background speech to avoid delaying checkpoints, and retention/export controls.
 
 ## 2. Make threading and shutdown reliable
 
