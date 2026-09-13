@@ -3,12 +3,15 @@ import time
 import json
 import math
 import re
+import ctypes
+from ctypes import wintypes
 import tempfile
 from pathlib import Path
 from datetime import datetime, timedelta
 import psutil
 import win32gui
 import win32process
+import win32ts
 import pyttsx3
 from collections import defaultdict
 import matplotlib.pyplot as plt
@@ -273,16 +276,23 @@ class DigitalWellnessApp:
             "Enter a date as YYYY-MM-DD. Weeks run Monday to Sunday.", 9, color="muted")
         self.history_feedback.configure(wraplength=880, justify='left')
         self.history_feedback.pack(anchor="w", padx=26, pady=(0, 12))
-        summary = self.ui_frame(self.history_frame, "card", padx=18, pady=12)
-        summary.pack(fill="x", padx=26, pady=(0, 12))
+        # Share one row so the summary doesn't squeeze the application list.
+        overview = self.ui_frame(self.history_frame)
+        overview.pack(fill="x", padx=26, pady=(0, 12))
+        summary = self.ui_frame(overview, "card", padx=18, pady=12, width=250, height=230)
+        summary.pack(side="left", fill="y", padx=(0, 12))
+        summary.pack_propagate(False)
         self.history_heading = self.ui_label(summary, "", 15, "card")
+        self.history_heading.configure(wraplength=214, justify="left")
         self.history_heading.pack(anchor="w")
         self.history_summary = self.ui_label(summary, "", 11, "card", "muted")
+        self.history_summary.configure(wraplength=214, justify="left")
         self.history_summary.pack(anchor="w", pady=(5, 0))
         self.history_scope = self.ui_label(summary, '', 10, 'card', 'accent')
+        self.history_scope.configure(wraplength=214, justify="left")
         self.history_scope.pack(anchor='w', pady=(5, 0))
-        chart_card = self.ui_frame(self.history_frame, "card", padx=12, pady=8)
-        chart_card.pack(fill="x", padx=26, pady=(0, 12))
+        chart_card = self.ui_frame(overview, "card", padx=12, pady=8)
+        chart_card.pack(side="left", fill="both", expand=True)
         self.history_chart_title = self.ui_label(chart_card, "Daily totals for this week", 11, "card")
         self.history_chart_title.pack(anchor="w", padx=6)
         self.history_figure = plt.Figure(figsize=(8, 2), dpi=100)
@@ -302,11 +312,16 @@ class DigitalWellnessApp:
         table = self.ui_frame(bottom, "card")
         table.pack(fill="both", expand=True)
         self.history_tree = ttk.Treeview(table, columns=("app", "duration", "share"),
-                                         show="headings", selectmode="browse", height=4)
+                                         show="headings", selectmode="browse", height=8)
         for column, title, width in (("app", "Application", 310), ("duration", "Time", 130),
                                      ("share", "Share of period", 140)):
             self.history_tree.heading(column, text=title)
             self.history_tree.column(column, width=width)
+        self.history_tree.column("app", minwidth=180, stretch=True)
+        self.history_tree.column("duration", width=155, minwidth=155, stretch=False, anchor="e")
+        self.history_tree.column("share", width=145, minwidth=145, stretch=False, anchor="e")
+        self.history_tree.heading("duration", anchor="e")
+        self.history_tree.heading("share", anchor="e")
         scroll = ttk.Scrollbar(table, command=self.history_tree.yview)
         self.history_tree.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
@@ -387,7 +402,7 @@ class DigitalWellnessApp:
         recovered = any(snapshot['start'] <= day <= snapshot['end']
                         for day in getattr(self.tracker.daily_store, 'recovered_days', []))
         feedback = ('Recovered from older tracking logs. Original logs are preserved. ' if recovered else '')
-        feedback += (f"Recorded on {snapshot['recorded']} of {snapshot['days']} days. Idle time is included."
+        feedback += (f"Recorded on {snapshot['recorded']} of {snapshot['days']} days. New tracking pauses after 60s idle; older records may include idle time."
                      if snapshot['apps'] else
                      'No saved records for this period. This does not mean you used your computer for zero minutes.')
         self.history_feedback.configure(text=feedback)
@@ -408,13 +423,13 @@ class DigitalWellnessApp:
         self.history_heading.configure(text=period)
         average = total / data["days"]
         self.history_summary.configure(text=f"Time recorded: {self.readable_duration(total)}"
-            + (f"     Daily average: {self.readable_duration(average)} (across {data['days']} calendar days)"
+            + (f"\nDaily average: {self.readable_duration(average)}\nAcross {data['days']} calendar days"
                if self.history_mode.get() == "Weekly" else ""))
-        self.history_scope.configure(text=f'App focus: {scope} · Show all apps to clear this filter'
+        focus_name = scope if len(scope) <= 28 else scope[:27] + '…'
+        self.history_scope.configure(text=f'App focus: {focus_name}\nShow all apps to clear'
                                      if self.history_app else 'Showing all apps · Select a row below to focus on an app')
         self.history_clear.configure(state="normal" if self.history_app else "disabled")
-        self.history_chart_title.configure(text=('This week for context · Selected day highlighted · Click a day to open it'
-            if self.history_mode.get() == 'Daily' else 'Week at a glance · Click a day to open its breakdown'))
+        self.history_chart_title.configure(text='This week · Click a day to explore')
         ax = self.history_ax
         ax.clear()
         self.history_figure.set_facecolor(self.palette["card"])
@@ -644,7 +659,7 @@ class DigitalWellnessApp:
         self.recommendation_text.insert("1.0", "A clearer picture takes a little time.\n\n"
             "Record usage on at least three different days to unlock your first analysis.\n\n"
             "In the meantime, explore Today and previous days in Overview.\n\n"
-            "These are statistical summaries of foreground time. Idle time is currently included.")
+            "These are statistical summaries of foreground time. New tracking pauses after 60s idle; older records may include idle time.")
         self.recommendation_text.configure(state="disabled")
 
     def refresh_insight_coverage(self):
@@ -757,7 +772,7 @@ class DigitalWellnessApp:
         self.summary_values = []
         self.summary_details = []
         for column, (title, value, detail) in enumerate((
-                ("SELECTED PERIOD", "00:00:00", "Foreground time · includes idle time"),
+                ("SELECTED PERIOD", "00:00:00", "Foreground time · 60s idle grace"),
                 ("MOST USED", "—", "Your most-used app will appear here"),
                 ("LIMIT CHECK-IN", "0 apps", "Approaching or over their limit"))):
             summaries.columnconfigure(column, weight=1, uniform="summary")
@@ -816,7 +831,7 @@ class DigitalWellnessApp:
         self.canvas = FigureCanvasTkAgg(self.figure, self.stats_frame)
         self.canvas.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         label(self.dashboard_frame,
-              "Daily totals are saved automatically. Choose a date to revisit previous days. Idle time is included.",
+              "Saved automatically · Pauses after 60s idle · Older records may include unattended time",
               9, color="muted").grid(row=4, column=0, sticky="w", padx=26, pady=(0, 12))
 
     def overview_usage(self):
@@ -1052,6 +1067,11 @@ class DigitalWellnessApp:
                 text=self.short_app_name(app, 42) if app else "Waiting for an active application…")
             title = self.tracker.current_window or "Foreground application monitoring is running."
             self.current_window_label.config(text=title[:65] + ("…" if len(title) > 65 else ""))
+            reason = getattr(self.tracker, 'pause_reason', None)
+            if reason:
+                self.tracking_badge.config(text='AUTOMATICALLY PAUSED')
+                self.current_app_label.config(text=reason)
+                self.current_window_label.config(text='Tracking resumes automatically when you return.')
         else:
             self.tracking_badge.config(text="TRACKING PAUSED" if usage else "READY TO BEGIN")
             self.current_app_label.config(text="A moment to step away." if usage
@@ -1414,9 +1434,72 @@ class DigitalWellnessApp:
                 self.exit_app()
 
 
+class WindowsActivity:
+    """Read input age and desktop availability without switching desktops."""
+
+    def __init__(self):
+        self.user = ctypes.WinDLL('user32', use_last_error=True)
+        self.kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        class LastInput(ctypes.Structure):
+            _fields_ = [('cbSize', wintypes.UINT), ('dwTime', wintypes.DWORD)]
+        self.LastInput = LastInput
+        self.user.GetLastInputInfo.argtypes = [ctypes.POINTER(LastInput)]
+        self.user.GetLastInputInfo.restype = wintypes.BOOL
+        self.kernel.GetTickCount64.restype = ctypes.c_ulonglong
+        self.user.OpenInputDesktop.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        self.user.OpenInputDesktop.restype = wintypes.HANDLE
+        self.user.GetUserObjectInformationW.argtypes = [wintypes.HANDLE, ctypes.c_int,
+            wintypes.LPVOID, wintypes.DWORD, ctypes.POINTER(wintypes.DWORD)]
+        self.user.GetUserObjectInformationW.restype = wintypes.BOOL
+        self.user.CloseDesktop.argtypes = [wintypes.HANDLE]
+        self.user.CloseDesktop.restype = wintypes.BOOL
+
+    def __call__(self):
+        info = self.LastInput()
+        info.cbSize = ctypes.sizeof(info)
+        if not self.user.GetLastInputInfo(ctypes.byref(info)):
+            return 0.0, False
+        idle = ((self.kernel.GetTickCount64() - info.dwTime) & 0xffffffff) / 1000
+        # A disconnected RDP session can still expose its Default desktop.
+        try:
+            if win32ts.WTSQuerySessionInformation(None, win32ts.WTS_CURRENT_SESSION,
+                    win32ts.WTSConnectState) != win32ts.WTSActive:
+                return idle, False
+        except Exception:
+            return idle, False
+        desktop = self.user.OpenInputDesktop(0, False, 0x0001)  # DESKTOP_READOBJECTS
+        if not desktop:
+            return idle, False
+        try:
+            name = ctypes.create_unicode_buffer(256)
+            needed = wintypes.DWORD()
+            available = self.user.GetUserObjectInformationW(desktop, 2, name,
+                ctypes.sizeof(name), ctypes.byref(needed))  # UOI_NAME
+            return idle, bool(available and name.value.lower() == 'default')
+        finally:
+            self.user.CloseDesktop(desktop)
+
+
+class AttendancePolicy:
+    """Conservatively count only the attended prefix of a short interval."""
+    idle_threshold = 60.0
+    max_gap = 5.0
+    clock_tolerance = 2.0
+
+    def duration(self, elapsed, wall_elapsed, idle, available):
+        if (not available or not all(math.isfinite(value) for value in (elapsed, wall_elapsed, idle))
+                or elapsed < 0 or elapsed > self.max_gap
+                or abs(wall_elapsed - elapsed) > self.clock_tolerance or idle < 0):
+            return 0.0
+        return max(0.0, elapsed - max(0.0, idle - self.idle_threshold))
+
+
 class ScreenTimeTracker:
     def __init__(self, gui=None):
         self.gui = gui
+        self.activity_probe = WindowsActivity()
+        self.attendance = AttendancePolicy()
+        self.pause_reason = None
         self.state_lock = threading.RLock()
         self.stop_event = threading.Event()
         self.daily_store = DailyUsageStore()
@@ -1547,12 +1630,17 @@ class ScreenTimeTracker:
         failure = None
         try:
             while not self.stop_requested:
-                window_title, app_name = self.get_active_window_info()
+                activity = self.activity_probe()
+                idle, available = activity
+                attended = available and idle < self.attendance.idle_threshold
+                self.pause_reason = None if attended else ('Idle — waiting for input' if available
+                                                          else 'Locked or desktop unavailable')
+                window_title, app_name = self.get_active_window_info() if attended else (None, None)
                 with self.state_lock:
                     if self.stop_requested:
                         break
                     if self.current_app:
-                        self.log_app_usage(self.current_app, self.current_window)
+                        self.log_app_usage(self.current_app, self.current_window, activity)
                     self.current_app = app_name
                     self.current_window = window_title
                     self.start_time = time.time() if app_name else None
@@ -1592,20 +1680,22 @@ class ScreenTimeTracker:
                         "Tracking stopped", f"Could not save all usage: {message}"))
                 self.gui.ui_actions.put(self.gui.tracking_finished)
 
-    def log_app_usage(self, app_name, window_title):
+    def log_app_usage(self, app_name, window_title, activity=None):
         with self.state_lock:
             if self.start_time is None or self.started_monotonic is None:
                 return
             now = time.monotonic()
-            elapsed = max(0, now - self.started_monotonic)
-            if elapsed <= 0:
-                return
+            wall_now = time.time()
+            idle, available = self.activity_probe() if activity is None else activity
+            elapsed = self.attendance.duration(now - self.started_monotonic,
+                wall_now - self.start_time, idle, available)
             # Advance the interval only after the durable write succeeds.
-            self.daily_store.record(app_name, self.start_time, elapsed)
-            self.session_data[app_name]["time"] += elapsed
-            self.session_data[app_name]["windows"][window_title] += elapsed
-            self.total_usage[app_name] += elapsed
-            self.start_time = time.time()
+            if elapsed > 0:
+                self.daily_store.record(app_name, self.start_time, elapsed)
+                self.session_data[app_name]["time"] += elapsed
+                self.session_data[app_name]["windows"][window_title] += elapsed
+                self.total_usage[app_name] += elapsed
+            self.start_time = wall_now
             self.started_monotonic = now
 
     def stop_tracking(self):

@@ -12,7 +12,9 @@ Implemented: daily totals now persist in `data/daily_usage.json` with atomic rep
 
 Missing past days now recover from validated dated text logs at startup, with a backup before migration and no merging into existing dates. Undated cumulative totals and old CSV snapshots are still excluded. Recovered days are marked in History; original logs remain untouched. Window titles are not copied into daily history.
 
-Remaining: idle/lock/suspend handling, background speech to avoid delaying checkpoints, and retention/export controls.
+Implemented: 60-second input inactivity cutoff, locked/secure-desktop and disconnected-session checks, and conservative suspend/resume gap rejection. Resume starts a fresh interval; atomic daily storage and midnight splitting are preserved. Regression tests cover idle transitions, lock/unlock, resume, stop, and native-query failures. Existing records remain unchanged.
+
+Remaining: background speech to avoid dropped intervals during long stalls, configurable inactivity grace (including passive media use), native session/power event notifications for transitions shorter than a polling interval, and retention/export controls.
 
 ## 2. Make threading and shutdown reliable
 

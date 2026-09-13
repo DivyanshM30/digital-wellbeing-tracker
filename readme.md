@@ -10,7 +10,7 @@ GitHub HEAD was checked during this review: commit `73234d37e788983555d313a3adba
 
 ## Features
 
-- Foreground process and window-title monitoring, sampled roughly once per second.
+- Foreground process and window-title monitoring, sampled roughly once per second. Tracking automatically pauses after 60 seconds without input, on lock/secure desktops, and for disconnected Windows sessions.
 - Overview with Start/Pause controls, a Today/history selector, reusable application rows, and a horizontal usage chart. Daily totals survive restart; an optional This session view shows the current run.
 - History with daily/weekly totals, a seven-day chart, previous/next date navigation, and a scrollable breakdown of every recorded app. Select an app to explore its trend.
 - Sidebar navigation, matching light/dark themes throughout, and an inline App Limits editor with durations entered in minutes (stored as seconds).
@@ -19,7 +19,7 @@ GitHub HEAD was checked during this review: commit `73234d37e788983555d313a3adba
 - Local JSON settings and atomic daily usage history, saved during tracking and on pause/exit.
 - Smart Insights using pandas and scikit-learn K-means clustering, requiring at least three dates of usage. These are statistical summaries, not an external AI service.
 
-**Current limitations:** foreground time includes idle time, and suspend handling still needs improvement. Old undated cumulative totals and potentially duplicated CSV snapshots are not automatically imported into daily history. See [the improvement review](IMPROVEMENTS.md).
+**Current limitations:** the first 60 seconds without keyboard or mouse input count as usage. Passive reading or video playback pauses after that grace period. Older saved and recovered records may still include unattended time; they are not rewritten. Old undated cumulative totals and potentially duplicated CSV snapshots are not automatically imported into daily history. See [the improvement review](IMPROVEMENTS.md).
 
 ## Requirements
 
@@ -64,6 +64,18 @@ Open **History** in the sidebar and choose **Daily** or **Weekly**. Use Previous
 The chart shows the week containing the selected date. Click a day's bar to open its daily breakdown. The table includes all recorded apps, sorted by duration, with their percentage of the entire selected period. Selecting a row filters the summary and chart to that app; **Show all apps** restores the overall view.
 
 Weekly averages divide recorded usage by elapsed calendar days in the selected week (seven for completed weeks). Missing records are labeled **No data**, and future days are marked separately; an unrecorded day is not proof of zero screen use. The current day is partial while tracking continues. Saved history works immediately without a data migration. Hourly timelines are not available because history currently stores daily totals only.
+
+### Idle, lock, and resume behavior
+
+Tracking keeps the first 60 seconds of inactivity, then stops counting until input returns. Overview displays an automatic pause status. Unlocking or returning from idle starts a fresh interval, without filling the unattended gap. Daily history, session totals, and app limits use these filtered durations.
+
+A polling gap longer than five seconds, or a wall/monotonic clock discrepancy greater than two seconds, is discarded to exclude suspend time. This conservative rule also drops long stalls such as blocking speech alerts. Windows input and session queries must succeed to count usage. Lock transitions discard the pending sample; very short lock/suspend events entirely between polls can escape detection. No existing history is recalculated, because daily totals do not contain enough information to reconstruct attendance.
+
+Regression tests use simulated input/session states and clocks; they never lock or suspend the computer:
+
+```powershell
+.\.venv\Scripts\python.exe -m unittest discover -s tests -v
+```
 
 ### Local files
 

@@ -105,6 +105,9 @@ class DailyUsageTests(unittest.TestCase):
 
     def tracker(self):
         tracker = Tracker.__new__(Tracker)
+        tracker.activity_probe = lambda: (0, True)
+        tracker.attendance = namespace['AttendancePolicy']()
+        tracker.attendance.max_gap = 30  # Older accounting tests use 10-second fake samples.
         tracker.state_lock = threading.RLock()
         tracker.stop_event = threading.Event()
         tracker.stop_requested = False
@@ -168,12 +171,12 @@ class DailyUsageTests(unittest.TestCase):
         self.assertAlmostEqual(Store(self.path).usage('2026-09-12')['editor.exe'], .4)
         self.assertIsNone(tracker.current_app)
 
-    def test_duration_uses_monotonic_clock_even_if_wall_clock_changes(self):
+    def test_clock_discontinuity_is_not_written_as_attended_time(self):
         tracker = self.tracker()
         with patch.object(time, 'monotonic', return_value=110), \
              patch.object(time, 'time', return_value=self.start - 3600):
             tracker.log_app_usage('editor.exe', 'Document')
-        self.assertEqual(self.store.usage('2026-09-12')['editor.exe'], 10)
+        self.assertEqual(self.store.usage('2026-09-12'), {})
 
     def test_selected_history_uses_persisted_data_not_current_session(self):
         self.store.record('editor.exe', self.start, 60)
