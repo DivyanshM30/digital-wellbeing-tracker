@@ -164,3 +164,7 @@ Dropdowns use matching light/dark popup colors and larger text. The date picker 
 CI is not configured. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for remaining correctness issues and proposed validation scenarios.
 
 No repository-level license file was found. Add an explicit license before presenting the project as licensed for reuse.
+
+## Next.js landing page
+
+The existing landing page is also available as a standalone Next.js App Router project in [`nextjs/`](nextjs/README.md). It preserves the design and mock Overview screenshot and supports static export. See its README for setup, build, hosting, and verification steps.

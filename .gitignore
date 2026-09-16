@@ -49,3 +49,9 @@ Desktop.ini
 /main3.py
 /main4.py
 /temp.html
+
+# Next.js landing page
+node_modules/
+.next/
+/nextjs/out/
+/nextjs/.next/
