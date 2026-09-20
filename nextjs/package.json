@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build"
+    "build": "next build",
+    "start": "next start",
+    "build:static": "node scripts/build-static.mjs"
   },
   "engines": {
     "node": ">=20.9.0"

@@ -13,15 +13,38 @@ npx pnpm@11.19.0 dev
 
 Open http://localhost:3000. Stop the server with Ctrl+C.
 
-## Build and host
+## Deploy to Vercel
+
+The default build uses Vercel's native Next.js integration:
+
+- Root Directory: `nextjs`
+- Framework Preset: `Next.js`
+- Install Command: `pnpm install --frozen-lockfile`
+- Build Command: `pnpm build`
+- Output Directory: leave the override disabled (framework default)
+- Production Branch: `main`
+- Use a supported Node.js version that satisfies `package.json`.
+
+Do not set `NEXT_STATIC_EXPORT` on Vercel. Push the updated commit, then deploy that commit. Configuration changes do not change an existing deployment. If necessary, redeploy with the build cache disabled.
+
+Verify the deployment is Ready, its source commit includes these changes, and the build log lists the `/` route. Open that deployment's generated URL using Visit. If it works but a custom domain still returns 404, check the domain's project and production deployment assignment. If the generated URL also fails, capture its exact error code and build logs. See [Vercel's 404 troubleshooting guide](https://vercel.com/kb/guide/how-to-debug-404-errors).
+
+To test the production build locally:
 
 ```powershell
 npx pnpm@11.19.0 build
+npx pnpm@11.19.0 start
 ```
 
-The static site is generated in `out/`. Upload the contents to a static host at the domain root. For hosting platforms that build Next.js, set the project root to `nextjs`, the build command to `pnpm build`, and the output folder to `out`.
+Open http://localhost:3000 and check the page and screenshot.
 
-This project uses [Next.js static export](https://nextjs.org/docs/app/guides/static-exports), so it needs no application server after building. `next start` is not used with this configuration. Subdirectory hosting (for example a GitHub project Pages URL) needs a matching Next.js base path and asset URLs before deployment.
+## Export for another static host
+
+```powershell
+npx pnpm@11.19.0 build:static
+```
+
+This explicit export generates `out/` using [Next.js static export](https://nextjs.org/docs/app/guides/static-exports). Upload its contents to a static host at the domain root. `next start` cannot serve this export; run the normal build again before using `start`. Subdirectory hosting needs a matching Next.js base path and asset URLs before deployment.
 
 ## What to edit
 
@@ -40,4 +63,4 @@ CSS and the screenshot are copied into this standalone project; future edits to 
 3. Expand each FAQ and check the footer links.
 4. Use Copy commands and paste into a text editor to verify the PowerShell paths and line breaks. Clipboard access requires HTTPS or localhost; manual selection remains available.
 5. Check that the Overview screenshot loads and shows the sample-data caption.
-6. Run the production build and confirm `out/index.html` is generated.
+6. Run `build` and `start` to check the production page. For static hosting, run `build:static` and confirm `out/index.html` is generated.
