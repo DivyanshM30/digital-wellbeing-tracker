@@ -104,7 +104,13 @@ The separate landing page uses local assets and system fonts, with no external f
 ```text
 main.py                    Desktop UI and tracking logic
 requirements.txt           Python dependencies, currently unpinned
-index.html                 Static landing page
+app/                       Next.js pages, layout, and styles
+public/                    Next.js public assets
+scripts/                   Static export build helper
+package.json               Web dependencies and commands
+next.config.mjs            Next.js build configuration
+docs/landing-page.md       Web setup and deployment guide
+index.html                 Original static landing page
 landing_page/
   styles.css               Page styling
   script.js                Copy-to-clipboard setup interaction
@@ -167,4 +173,4 @@ No repository-level license file was found. Add an explicit license before prese
 
 ## Next.js landing page
 
-The existing landing page is also available as a standalone Next.js App Router project in [`nextjs/`](nextjs/README.md). It preserves the design and mock Overview screenshot and supports static export. See its README for setup, build, hosting, and verification steps.
+The Next.js App Router landing page lives at the repository root, so Vercel detects it automatically. Keep Vercel Root Directory at its default (clear any previous `nextjs` setting). Run `npx pnpm@11.19.0 install --frozen-lockfile` and `npx pnpm@11.19.0 dev` from the root. See [the landing page guide](docs/landing-page.md) for build, hosting, and verification steps. The Python desktop app still runs with `main.py`.

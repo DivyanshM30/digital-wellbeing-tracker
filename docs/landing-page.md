@@ -1,10 +1,10 @@
 # Digital Wellbeing landing page — Next.js
 
-A Next.js App Router port of the existing landing page, preserving its content, CSS, responsive layouts, links, native FAQ accordions, and Overview screenshot. The original static page remains at `../index.html`. The Python desktop application is separate.
+A Next.js App Router port of the existing landing page, preserving its content, CSS, responsive layouts, links, native FAQ accordions, and Overview screenshot. The original static page remains at `index.html` in the repository root. The Python desktop application is separate.
 
 ## Run locally
 
-Use Node.js 20.9 or newer and run from this folder:
+Use Node.js 20.9 or newer and run from the repository root:
 
 ```powershell
 npx pnpm@11.19.0 install --frozen-lockfile
@@ -15,9 +15,9 @@ Open http://localhost:3000. Stop the server with Ctrl+C.
 
 ## Deploy to Vercel
 
-The default build uses Vercel's native Next.js integration:
+The root `package.json` lets Vercel detect Next.js automatically. The default build uses Vercel's native Next.js integration:
 
-- Root Directory: `nextjs`
+- Root Directory: repository root (leave the default; clear any previous `nextjs` override)
 - Framework Preset: `Next.js`
 - Install Command: `pnpm install --frozen-lockfile`
 - Build Command: `pnpm build`

@@ -53,5 +53,5 @@ Desktop.ini
 # Next.js landing page
 node_modules/
 .next/
-/nextjs/out/
-/nextjs/.next/
+/out/
+.vercel/
