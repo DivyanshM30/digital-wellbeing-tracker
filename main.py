@@ -183,6 +183,7 @@ class DigitalWellnessApp:
         self.tracking_thread = None
         self.ui_actions = queue.Queue()
         self.closing = False
+        self.analysis_running = False
         self.ui_timer = None
         self.last_chart_refresh = 0
         self.dark_mode = tk.BooleanVar(value=False)
@@ -1010,6 +1011,7 @@ class DigitalWellnessApp:
         if self.tracking_active:
             self.stop_tracking()
         self.closing = True
+        self.tracker.speech.close()
         if self.ui_timer is not None:
             self.root.after_cancel(self.ui_timer)
         self.tray_icon.stop()
@@ -1266,18 +1268,43 @@ class DigitalWellnessApp:
         self.root.after(int(delay * 1000), self.analyze_usage)
 
     def analyze_usage(self):
+        if self.closing or self.analysis_running:
+            return
+        self.analysis_running = True
+        threading.Thread(target=self._analyze_usage_worker, daemon=True,
+                         name='usage-analysis').start()
+
+    def _analysis_complete(self, today_str=None, recommendation=None, alert=None,
+                           info=None, error=None):
+        self.analysis_running = False
+        if self.closing:
+            return
+        if error is not None:
+            messagebox.showerror('Smart Insights', f'Failed to analyze usage: {error}')
+        elif info is not None:
+            messagebox.showinfo('Smart Insights', info)
+        else:
+            self.recommendation_text.config(state=tk.NORMAL)
+            self.recommendation_text.delete(1.0, tk.END)
+            self.recommendation_text.insert(tk.END, recommendation)
+            self.recommendation_text.config(state=tk.DISABLED)
+            self.tracker.voice_alert(alert)
+            self.insights_generated_for = today_str
+
+    def _analyze_usage_worker(self):
+        result = {}
         try:
             today_str = datetime.now().strftime('%Y-%m-%d')
 
             df = pd.DataFrame(self.tracker.daily_store.rows(), columns=['date', 'app', 'duration'])
             if df.empty:
-                messagebox.showinfo("Smart Insights", "No usage data available.")
+                result = {'info': 'No usage data available.'}
                 return
 
             pivot = df.pivot_table(index='date', columns='app', values='duration', aggfunc='sum').fillna(0)
 
             if len(pivot) < 3:
-                messagebox.showinfo("Smart Insights", "Not enough days of data to analyze (need at least 3 days).")
+                result = {'info': 'Not enough days of data to analyze (need at least 3 days).'}
                 return
 
             from sklearn.preprocessing import StandardScaler
@@ -1313,7 +1340,7 @@ class DigitalWellnessApp:
             pivot['cluster'] = model.fit_predict(pivot_scaled)
 
             if today_str not in pivot.index:
-                messagebox.showinfo("Smart Insights", "No usage data for today.")
+                result = {'info': 'No usage data for today.'}
                 return
 
             today_cluster = pivot.loc[today_str]['cluster']
@@ -1350,24 +1377,20 @@ class DigitalWellnessApp:
                 percentage = (duration / total_usage) * 100 if total_usage > 0 else 0
                 recommendation += f"• {app}: {self.format_time(duration)} ({percentage:.1f}%)\n"
 
-            self.recommendation_text.config(state=tk.NORMAL)
-            self.recommendation_text.delete(1.0, tk.END)
-            self.recommendation_text.insert(tk.END, recommendation)
-            self.recommendation_text.config(state=tk.DISABLED)
-
-            if self.voice_alerts_var.get():
-                alert_message = f"Today is a {today_label} day. {user_trend}. Check your insights."
-                self.tracker.voice_alert(alert_message)
-
-            # ✅ Set flag after successful generation
-            self.insights_generated_for = today_str
+            result = dict(today_str=today_str, recommendation=recommendation,
+                          alert=f"Today is a {today_label} day. {user_trend}. Check your insights.")
 
         except Exception as e:
             import traceback
             error_details = traceback.format_exc()
-            messagebox.showerror("Smart Insights", f"Failed to analyze usage: {str(e)}")
-            with open('error_log.txt', 'a') as f:
-                f.write(f"{datetime.now()}: {error_details}\n")
+            result = {'error': str(e)}
+            try:
+                with open('error_log.txt', 'a') as f:
+                    f.write(f"{datetime.now()}: {error_details}\n")
+            except OSError:
+                pass
+        finally:
+            self.ui_actions.put(lambda result=result: self._analysis_complete(**result))
 
                 
     def _calculate_usage_trend(self, pivot, today_str):
@@ -1494,6 +1517,63 @@ class AttendancePolicy:
         return max(0.0, elapsed - max(0.0, idle - self.idle_threshold))
 
 
+class SpeechWorker:
+    """A single daemon owns COM and the speech engine for its entire lifetime."""
+
+    def __init__(self):
+        self.messages = queue.Queue()
+        self.closed = threading.Event()
+        self.thread = threading.Thread(target=self.run, daemon=True, name='speech-alerts')
+        self.thread.start()
+
+    def say(self, message):
+        if not self.closed.is_set():
+            self.messages.put(message)
+
+    def close(self):
+        # Never join a possibly blocked audio driver from Tk's event loop.
+        self.closed.set()
+        self.messages.put(None)
+
+    def run(self):
+        engine = None
+        com = None
+        try:
+            import pythoncom
+            pythoncom.CoInitialize()
+            com = pythoncom
+            while not self.closed.is_set():
+                message = self.messages.get()
+                if message is None or self.closed.is_set():
+                    break
+                try:
+                    if engine is None:
+                        engine = pyttsx3.init()
+                    engine.stop()
+                    engine.say(message)
+                    engine.runAndWait()
+                    self.closed.wait(0.3)
+                except Exception as error:
+                    print(f'Voice alert failed: {error}')
+                    if engine is not None:
+                        try:
+                            engine.stop()
+                        except Exception:
+                            pass
+                    engine = None
+        except Exception as error:
+            print(f'Voice alerts unavailable: {error}')
+        finally:
+            if engine is not None:
+                try:
+                    engine.stop()
+                except Exception:
+                    pass
+                engine = None
+            if com is not None:
+                com.CoUninitialize()
+
+
 class ScreenTimeTracker:
     def __init__(self, gui=None):
         self.gui = gui
@@ -1511,11 +1591,7 @@ class ScreenTimeTracker:
         self.session_data = defaultdict(lambda: {'time': 0, 'windows': defaultdict(float)})
         self.total_usage = defaultdict(float)
         
-        try:
-            self.engine = pyttsx3.init()
-        except:
-            print("Warning: Could not initialize text-to-speech engine")
-            self.engine = None
+        self.speech = SpeechWorker()
             
         self.current_app = None
         self.current_window = None
@@ -1564,38 +1640,14 @@ class ScreenTimeTracker:
             return None, None
         
     def voice_alert(self, message):
-        """Issue a voice alert with proper COM initialization"""
-        if self.gui and not hasattr(self.gui, 'voice_alerts_var') or not self.gui.voice_alerts_var.get():
-            return  # Voice alerts disabled
-            
-        try:
-            import pythoncom
-            pythoncom.CoInitialize()
-        except ImportError:
-            pass  # For non-Windows systems
+        """Read Tk settings only when the UI drains its existing action queue."""
+        if self.gui:
+            self.gui.ui_actions.put(lambda: self._queue_voice_alert(message))
 
-        try:
-            if not hasattr(self, 'engine') or not self.engine:
-                self.engine = pyttsx3.init()
-                
-            self.engine.stop()
-            self.engine.say(message)
-            self.engine.runAndWait()
-            
-            time.sleep(0.3)
-            
-        except Exception as e:
-            print(f"Voice alert failed: {e}")
-            try:
-                self.engine = pyttsx3.init()
-            except:
-                print("Failed to reinitialize voice engine")
-                
-        finally:
-            try:
-                pythoncom.CoUninitialize()
-            except:
-                pass
+    def _queue_voice_alert(self, message):
+        if (not self.gui.closing and hasattr(self.gui, 'voice_alerts_var')
+                and self.gui.voice_alerts_var.get()):
+            self.speech.say(message)
 
     def enforce_limit(self, app_name):
         """Forcefully close the application"""
