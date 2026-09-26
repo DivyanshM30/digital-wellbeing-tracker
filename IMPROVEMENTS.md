@@ -81,3 +81,7 @@ Use transactional interval storage and versioned settings. Store data in a stabl
 ## Validation limits
 
 The py launcher reported no installed Python interpreters. GUI behavior, Python tests, and executable packaging were not run. Documentation was checked against source and repository state; the findings are static code observations, not claims of runtime reproduction or a comprehensive security audit.
+
+## Startup update
+
+Implemented an opt-in current-user Windows sign-in entry. Startup launches begin tracking in the tray, use stable application-relative settings paths, and reveal the window if tray initialization fails. Manual launch behavior and the existing single-instance lock are preserved. Registration and launch-mode tests use mocks without modifying Windows startup configuration.

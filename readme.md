@@ -44,7 +44,7 @@ py -m venv .venv
 
 The Tkinter command opens a test window; close it before launching the tracker. Calling the environment's Python directly avoids needing PowerShell activation.
 
-Run from the project directory: data paths resolve relative to the working directory. No API key or external database is required.
+Launch `main.py`; settings and data resolve beside the application, independent of the launch directory. No API key or external database is required.
 
 ## Usage
 
@@ -141,7 +141,7 @@ An initial local build command is:
 .\.venv\Scripts\python.exe -m PyInstaller --onefile --collect-data sv_ttk --name DigitalWellbeingTracker main.py
 ```
 
-Expected output: `dist/DigitalWellbeingTracker.exe`. This recipe was not validated during the review. Test launch, themes, charts, speech, tray actions, and data saving on a clean Windows machine before publishing. Data is still written relative to the working directory.
+Expected output: `dist/DigitalWellbeingTracker.exe`. This recipe was not validated during the review. Test launch, themes, charts, speech, tray actions, and data saving on a clean Windows machine before publishing. Data is written beside the executable; use a writable installation folder.
 
 ## Troubleshooting
 
@@ -151,7 +151,7 @@ Expected output: `dist/DigitalWellbeingTracker.exe`. This recipe was not validat
 - **No voice output:** check installed Windows voices and the Voice Alerts setting.
 - **No insights:** at least three recorded dates must exist in `data/daily_usage.json`; old CSV snapshots are not imported automatically.
 - **Window disappears:** check the Windows notification area for the tray icon.
-- **Different settings or totals:** launch from the same working directory. Back up data before switching prototypes, which use different configuration schemas.
+- **Different settings or totals:** use the same installation folder. Back up data before switching prototypes, which use different configuration schemas.
 
 ## Development status
 
@@ -174,3 +174,19 @@ No repository-level license file was found. Add an explicit license before prese
 ## Next.js landing page
 
 The Next.js App Router landing page lives at the repository root, so Vercel detects it automatically. Keep Vercel Root Directory at its default (clear any previous `nextjs` setting). Run `npx pnpm@11.19.0 install --frozen-lockfile` and `npx pnpm@11.19.0 dev` from the root. See [the landing page guide](docs/landing-page.md) for build, hosting, and verification steps. The Python desktop app still runs with `main.py`.
+
+## Start with Windows
+
+In **Settings → Startup and limits**, enable **Start with Windows**. This is off by default. It registers only the current Windows user; no administrator access is needed. On the next sign-in, the app starts tracking with its window hidden in the system tray. Use the tray menu **Show**, **Start/Stop Tracking**, or **Exit**. Manual launches still open Overview without starting tracking automatically.
+
+Disabling the setting removes the app's startup entry and does not stop the current tracking session. Windows may delay startup; if you disabled the app in Task Manager → Startup apps, re-enable it there too. The checkbox reflects the registered command, not Task Manager's separate enable/disable control. If the tray cannot initialize, the window appears after five seconds so the tracker remains accessible.
+
+Startup uses absolute paths to this installation and its `pythonw.exe` (or the packaged executable). If you move the folder or recreate the virtual environment, open the app and enable the setting again. Settings and logs resolve beside `main.py` or the executable, even when Windows launches from another working directory. Existing atomic daily usage storage is unchanged.
+
+To verify without signing out, exit the existing tray instance and run:
+
+```powershell
+.\.venv\Scripts\python.exe main.py --startup
+```
+
+Check that the tray icon appears, use **Show** to confirm tracking is active, then exit. For a full check, enable the setting, sign out and back in, and confirm today's usage is increasing. Disable it and repeat sign-in to confirm it no longer launches. Running with `--startup` alone does not register the app for future sign-ins.

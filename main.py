@@ -27,6 +27,7 @@ from plyer import notification
 import sv_ttk   
 import pandas as pd
 from sklearn.cluster import KMeans
+from startup import StartupRegistration
 
 class DailyUsageStore:
     """Daily totals committed atomically, independent of analytics or shutdown."""
@@ -180,6 +181,8 @@ class DigitalWellnessApp:
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         self.tracking_active = False
+        self.startup_registration = StartupRegistration(__file__)
+        self.tray_ready = threading.Event()
         self.tracking_thread = None
         self.ui_actions = queue.Queue()
         self.closing = False
@@ -676,6 +679,7 @@ class DigitalWellnessApp:
         self.auto_shutdown_var = tk.BooleanVar(value=True)
         self.tray_notifications_var = tk.BooleanVar(value=True)
         self.minimize_to_tray_var = tk.BooleanVar(value=True)
+        self.start_with_windows_var = tk.BooleanVar(value=False)
         body = self.ui_frame(self.settings_frame)
         body.pack(fill="both", expand=True, padx=26, pady=(0, 22))
         for column in (0, 1):
@@ -686,8 +690,10 @@ class DigitalWellnessApp:
                              self.minimize_to_tray_var, self.save_app_settings))),
             ("Notifications", (("Voice reminders", "Hear a reminder when you approach a limit.", self.voice_alerts_var, self.save_app_settings),
                                ("Desktop notifications", "Show updates in the Windows notification area.", self.tray_notifications_var, self.save_app_settings))),
-            ("App limits", (("Close apps at their limit", "Can close an app with unsaved work. Turn off for reminders only.",
-                            self.auto_shutdown_var, self.save_app_settings),)),
+            ("Startup and limits", (("Close apps at their limit", "Can close an app with unsaved work. Turn off for reminders only.",
+                            self.auto_shutdown_var, self.save_app_settings),
+                           ("Start with Windows", "At sign-in, start tracking in the tray. Windows Startup Apps must also allow it.",
+                            self.start_with_windows_var, self.toggle_windows_startup))),
         )
         for index, (title, settings) in enumerate(groups):
             card = self.ui_frame(body, "card", padx=18, pady=18)
@@ -896,6 +902,10 @@ class DigitalWellnessApp:
     def load_app_settings(self):
         """Load application settings"""
         try:
+            self.start_with_windows_var.set(self.startup_registration.enabled())
+        except (OSError, ValueError) as error:
+            self.status_bar.configure(text=f'Could not check Windows startup: {error}')
+        try:
             if os.path.exists('app_settings.json'):
                 with open('app_settings.json', 'r') as f:
                     settings = json.load(f)
@@ -906,6 +916,30 @@ class DigitalWellnessApp:
                     self.minimize_to_tray_var.set(settings.get('minimize_to_tray', True))
         except Exception as e:
             print(f"Error loading app settings: {e}")
+
+    def toggle_windows_startup(self):
+        requested = self.start_with_windows_var.get()
+        try:
+            self.startup_registration.set_enabled(requested)
+        except (OSError, ValueError) as error:
+            self.start_with_windows_var.set(not requested)
+            messagebox.showerror('Windows startup could not be changed', str(error))
+            return
+        self.status_bar.configure(text='Windows startup enabled: tracking starts in the tray at sign-in.'
+                                  if requested else 'Windows startup disabled.')
+
+    def apply_launch_mode(self, startup=False):
+        if not startup:
+            self.root.deiconify()
+            return
+        self.start_tracking()
+        # Keep sign-in quiet, but never strand the app if tray setup fails.
+        self.root.after(5000, self.check_startup_tray)
+
+    def check_startup_tray(self):
+        if not self.closing and not self.tray_ready.is_set():
+            self.root.deiconify()
+            self.status_bar.configure(text='Tracking is active. The tray is unavailable; keeping the window open.')
 
     def save_app_settings(self):
         """Save application settings"""
@@ -978,7 +1012,19 @@ class DigitalWellnessApp:
         
         self.tray_icon = pystray.Icon("digital_wellness", icon_image, "Digital Wellness", menu_items)
         
-        threading.Thread(target=self.tray_icon.run, daemon=True).start()
+        def ready(icon):
+            icon.visible = True
+            self.tray_ready.set()
+
+        def run_tray():
+            try:
+                self.tray_icon.run(setup=ready)
+            finally:
+                self.tray_ready.clear()
+                if not self.closing:
+                    self.ui_actions.put(self.show_window)
+
+        threading.Thread(target=run_tray, daemon=True).start()
 
     def create_tray_icon(self, size=64):
         """Create a simple icon for the system tray"""
@@ -1445,7 +1491,8 @@ class DigitalWellnessApp:
     
     def on_closing(self):
         """Handle window close event"""
-        if hasattr(self, 'minimize_to_tray_var') and self.minimize_to_tray_var.get():
+        if (hasattr(self, 'minimize_to_tray_var') and self.minimize_to_tray_var.get()
+                and self.tray_ready.is_set()):
             self.root.withdraw()
             self.show_notification("Digital Wellness", "App minimized to system tray")
         else:
@@ -1767,6 +1814,10 @@ def main():
     # The tray can keep an instance alive after its window is closed. Prevent
     # a second process from overwriting the first process's daily snapshots.
     import msvcrt
+    startup = '--startup' in sys.argv[1:]
+    application_path = sys.executable if getattr(sys, 'frozen', False) else __file__
+    # Windows sign-in may launch from System32. Reuse the normal config/log paths.
+    os.chdir(Path(application_path).resolve().parent)
     root = tk.Tk()
     root.withdraw()
     application_path = sys.executable if getattr(sys, 'frozen', False) else __file__
@@ -1781,13 +1832,14 @@ def main():
         try:
             msvcrt.locking(instance.fileno(), msvcrt.LK_NBLCK, 1)
         except OSError:
-            messagebox.showinfo('Already running',
-                                'Digital Wellbeing Tracker is already running. Open it from the system tray.')
+            if not startup:
+                messagebox.showinfo('Already running',
+                                    'Digital Wellbeing Tracker is already running. Open it from the system tray.')
             root.destroy()
             return
         try:
             app = DigitalWellnessApp(root)
-            root.deiconify()
+            app.apply_launch_mode(startup)
             root.mainloop()
         except Exception as error:
             messagebox.showerror('Unable to start tracker', str(error))
