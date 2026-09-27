@@ -85,3 +85,7 @@ The py launcher reported no installed Python interpreters. GUI behavior, Python 
 ## Startup update
 
 Implemented an opt-in current-user Windows sign-in entry. Startup launches begin tracking in the tray, use stable application-relative settings paths, and reveal the window if tray initialization fails. Manual launch behavior and the existing single-instance lock are preserved. Registration and launch-mode tests use mocks without modifying Windows startup configuration.
+
+## Weekly comparison update
+
+History now compares matching weekday spans with the preceding week, shows daily recorded-usage averages and the most-used app, and provides per-app percentage changes. Missing coverage suppresses changes; zero baselines, partial weeks, and recovered logs are labeled. Existing atomic daily storage remains unchanged.

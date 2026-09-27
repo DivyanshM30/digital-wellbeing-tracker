@@ -190,3 +190,13 @@ To verify without signing out, exit the existing tray instance and run:
 ```
 
 Check that the tray icon appears, use **Show** to confirm tracking is active, then exit. For a full check, enable the setting, sign out and back in, and confirm today's usage is increasing. Disable it and repeat sign-in to confirm it no longer launches. Running with `--startup` alone does not register the app for future sign-ins.
+
+## Weekly comparisons
+
+Choose **History → Weekly**. The summary shows recorded time, the daily average, and the change from the preceding week. The most-used app is called out above the ranked app list, which includes a **vs previous week** percentage column. Select an app to compare that app's totals; **Show all apps** restores the overall comparison.
+
+Completed weeks compare Monday–Sunday. The current week compares Monday–today with the same weekdays of the previous week. Today is unfinished, while the previous dates include full days; the view labels this explicitly. Daily averages divide saved time by the number of calendar days in the selected span, including dates with missing records. These are recorded-usage averages, not proof of continuous tracking.
+
+The view shows record coverage for both periods. If either period has a missing date, the change is unavailable rather than reporting a misleading decrease. A zero baseline is labeled **No prior usage**; no infinite percentage is displayed. Recovered logs are identified because older records may include idle time. Comparisons read existing daily storage without a migration or new writes.
+
+Verify by choosing a completed week with records for every day in both weeks: the overall change should equal `(selected total - previous total) / previous total × 100`, and the daily average should be the selected total divided by seven. Then choose the current week to check its partial-week label, select an app to inspect its change, and choose an older unrecorded week to check the missing-data message.

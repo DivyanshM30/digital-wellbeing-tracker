@@ -145,6 +145,35 @@ class DailyUsageStore:
             return [{'date': day, 'app': app, 'duration': seconds}
                     for day, apps in sorted(self.days.items()) for app, seconds in apps.items()]
 
+    def weekly_comparison(self, anchor, today=None, app=None):
+        """Compare equal calendar-day spans from one consistent, read-only snapshot."""
+        today = today or datetime.now().date()
+        with self.lock:
+            current = self.history(anchor, weekly=True, today=today)
+            start = datetime.strptime(current['start'], '%Y-%m-%d').date() - timedelta(days=7)
+            previous_days = [(start + timedelta(days=i)).isoformat() for i in range(current['days'])]
+            previous = defaultdict(float)
+            for day in previous_days:
+                for name, seconds in self.days.get(day, {}).items():
+                    previous[name] += seconds
+            recorded = sum(day in self.days for day in previous_days)
+            previous_total = previous.get(app, 0) if app else sum(previous.values())
+            total = current['apps'].get(app, 0) if app else sum(current['apps'].values())
+            complete = current['recorded'] == current['days'] and recorded == current['days']
+            comparable = complete and previous_total > 0
+            return {
+                'current': current, 'previous_apps': dict(previous),
+                'previous_start': previous_days[0], 'previous_end': previous_days[-1],
+                'previous_recorded': recorded, 'total': total, 'previous_total': previous_total,
+                'average': total / current['days'], 'previous_average': previous_total / current['days'],
+                'delta': total - previous_total if complete else None,
+                'percent': (total - previous_total) / previous_total * 100 if comparable else None,
+                'coverage_complete': complete,
+                'partial': current['end'] == today.isoformat(),
+                'recovered': any(day in self.recovered_days for day in previous_days)
+                    or any(current['start'] <= day <= current['end'] for day in self.recovered_days),
+            }
+
     def history(self, anchor, weekly=False, today=None):
         """Snapshot a calendar period; unrecorded and future days stay explicit."""
         selected = datetime.strptime(anchor, '%Y-%m-%d').date()
@@ -315,7 +344,7 @@ class DigitalWellnessApp:
         self.history_clear.pack(side="right")
         table = self.ui_frame(bottom, "card")
         table.pack(fill="both", expand=True)
-        self.history_tree = ttk.Treeview(table, columns=("app", "duration", "share"),
+        self.history_tree = ttk.Treeview(table, columns=("app", "duration", "share", "change"),
                                          show="headings", selectmode="browse", height=8)
         for column, title, width in (("app", "Application", 310), ("duration", "Time", 130),
                                      ("share", "Share of period", 140)):
@@ -326,6 +355,9 @@ class DigitalWellnessApp:
         self.history_tree.column("share", width=145, minwidth=145, stretch=False, anchor="e")
         self.history_tree.heading("duration", anchor="e")
         self.history_tree.heading("share", anchor="e")
+        self.history_tree.heading("change", text="vs previous week", anchor="e")
+        self.history_tree.column("change", width=155, minwidth=155, stretch=False, anchor="e")
+        self.history_tree.configure(displaycolumns=("app", "duration", "share"))
         scroll = ttk.Scrollbar(table, command=self.history_tree.yview)
         self.history_tree.configure(yscrollcommand=scroll.set)
         scroll.pack(side="right", fill="y")
@@ -374,8 +406,11 @@ class DigitalWellnessApp:
         if not hasattr(self, "palette"):
             return
         try:
-            snapshot = self.tracker.daily_store.history(
-                self.history_date.get().strip(), self.history_mode.get() == "Weekly")
+            weekly = self.history_mode.get() == "Weekly"
+            self.history_comparison = (self.tracker.daily_store.weekly_comparison(
+                self.history_date.get().strip()) if weekly else None)
+            snapshot = (self.history_comparison['current'] if weekly else
+                        self.tracker.daily_store.history(self.history_date.get().strip()))
         except ValueError:
             self.history_feedback.configure(text="Enter a valid date (YYYY-MM-DD), no later than today.")
             return
@@ -385,6 +420,8 @@ class DigitalWellnessApp:
         if self.history_app not in snapshot["apps"]:
             self.history_app = None
         total = sum(snapshot["apps"].values())
+        self.history_tree.configure(displaycolumns=("app", "duration", "share", "change")
+                                    if weekly else ("app", "duration", "share"))
         # Reuse tree rows so periodic refresh does not disturb scroll or focus.
         expected = set(snapshot["apps"])
         for item in self.history_tree.get_children():
@@ -392,6 +429,12 @@ class DigitalWellnessApp:
                 self.history_tree.delete(item)
         for index, (app, seconds) in enumerate(snapshot["apps"].items()):
             values = (app, self.readable_duration(seconds), f"{seconds / total:.1%}" if total else "0%")
+            if weekly:
+                comparison = self.history_comparison
+                prior = comparison['previous_apps'].get(app, 0)
+                change = ('Insufficient data' if not comparison['coverage_complete'] else
+                          'No prior usage' if not prior else f'{(seconds - prior) / prior:+.0%}')
+                values += (change,)
             if self.history_tree.exists(app):
                 self.history_tree.item(app, values=values)
                 self.history_tree.move(app, "", index)
@@ -409,8 +452,20 @@ class DigitalWellnessApp:
         feedback += (f"Recorded on {snapshot['recorded']} of {snapshot['days']} days. New tracking pauses after 60s idle; older records may include idle time."
                      if snapshot['apps'] else
                      'No saved records for this period. This does not mean you used your computer for zero minutes.')
+        if weekly:
+            comparison = self.history_comparison
+            feedback = (f"Compared with {comparison['previous_start']} to {comparison['previous_end']}. "
+                        f"Days with records: selected {snapshot['recorded']}/{snapshot['days']}, "
+                        f"previous {comparison['previous_recorded']}/{snapshot['days']}.")
+            if comparison['partial']:
+                feedback += ' Week so far: today is unfinished; previous dates include full days.'
+            if comparison['recovered']:
+                feedback += ' Includes recovered logs; older tracking may include idle time.'
         self.history_feedback.configure(text=feedback)
         self.history_table_title.configure(text=f"Applications · {len(snapshot['apps'])} recorded · sorted by time")
+        if weekly and snapshot['apps']:
+            top = next(iter(snapshot['apps']))
+            self.history_table_title.configure(text=f"Most used: {self.short_app_name(top, 22)} · Apps ranked by time")
         self.draw_history()
         self.history_refresh_time = time.monotonic()
 
@@ -432,6 +487,18 @@ class DigitalWellnessApp:
         focus_name = scope if len(scope) <= 28 else scope[:27] + '…'
         self.history_scope.configure(text=f'App focus: {focus_name}\nShow all apps to clear'
                                      if self.history_app else 'Showing all apps · Select a row below to focus on an app')
+        if self.history_mode.get() == 'Weekly':
+            comparison = self.history_comparison
+            prior = (comparison['previous_apps'].get(self.history_app, 0) if self.history_app
+                     else comparison['previous_total'])
+            if not comparison['coverage_complete']:
+                change = 'Comparison unavailable: missing days'
+            elif prior == 0:
+                change = 'No prior usage for comparison'
+            else:
+                delta = total - prior
+                change = f'{abs(delta) / prior:.0%} {"more" if delta > 0 else "less"} than previous week' if delta else 'Same as previous week'
+            self.history_scope.configure(text=f'{focus_name}\n{change}\nPrevious: {self.readable_duration(prior)}')
         self.history_clear.configure(state="normal" if self.history_app else "disabled")
         self.history_chart_title.configure(text='This week · Click a day to explore')
         ax = self.history_ax
