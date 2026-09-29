@@ -89,3 +89,7 @@ Implemented an opt-in current-user Windows sign-in entry. Startup launches begin
 ## Weekly comparison update
 
 History now compares matching weekday spans with the preceding week, shows daily recorded-usage averages and the most-used app, and provides per-app percentage changes. Missing coverage suppresses changes; zero baselines, partial weeks, and recovered logs are labeled. Existing atomic daily storage remains unchanged.
+
+## Hourly history update
+
+Implemented local-hour buckets for new attended usage, click/dropdown hour selection, app breakdowns, and explicit partial/legacy-only detail states. Daily and hourly totals share one atomic version 2 transaction. Version 1 totals are preserved with a backup before upgrade; legacy imports retain existing hourly detail. Regression tests cover hour/midnight boundaries, reopen, migration failure, malformed detail, and idle/resume filtering.

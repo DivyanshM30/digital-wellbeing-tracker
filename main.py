@@ -37,10 +37,12 @@ class DailyUsageStore:
         self.path = Path(path) if path else Path(application_path).resolve().parent / 'data' / 'daily_usage.json'
         self.lock = threading.RLock()
         self.days = {}
+        self.hours = {}
+        self.storage_version = 2
         self.recovered_days = []
         if self.path.exists():
             payload = json.loads(self.path.read_text(encoding='utf-8'))
-            if payload.get('version') != 1:
+            if payload.get('version') not in (1, 2):
                 raise ValueError('Unsupported daily usage version; file left unchanged')
             for day, apps in payload['days'].items():
                 datetime.strptime(day, '%Y-%m-%d')
@@ -49,7 +51,27 @@ class DailyUsageStore:
                         or not math.isfinite(value) or value < 0 for app, value in apps.items()):
                     raise ValueError('Invalid daily usage data; file left unchanged')
             self.days = payload['days']
+            self.storage_version = payload['version']
             self.recovered_days = payload.get('recovered_days', [])
+            if payload['version'] == 2:
+                hours = payload.get('hours')
+                if not isinstance(hours, dict):
+                    raise ValueError('Invalid hourly usage data; file left unchanged')
+                for day, buckets in hours.items():
+                    if day not in self.days or not isinstance(buckets, dict):
+                        raise ValueError('Invalid hourly date; file left unchanged')
+                    totals = defaultdict(float)
+                    for hour, apps in buckets.items():
+                        if hour not in [str(i) for i in range(24)] or not isinstance(apps, dict):
+                            raise ValueError('Invalid hour; file left unchanged')
+                        for app, value in apps.items():
+                            if (not isinstance(app, str) or not isinstance(value, (int, float))
+                                    or not math.isfinite(value) or value < 0):
+                                raise ValueError('Invalid hourly duration; file left unchanged')
+                            totals[app] += value
+                    if any(value > self.days[day].get(app, 0) + 1e-6 for app, value in totals.items()):
+                        raise ValueError('Hourly usage exceeds daily totals; file left unchanged')
+                self.hours = hours
 
     def record(self, app, started, seconds):
         if not math.isfinite(seconds):
@@ -58,26 +80,41 @@ class DailyUsageStore:
             return
         with self.lock:
             updated = {day: apps.copy() for day, apps in self.days.items()}
+            hours = {day: {hour: apps.copy() for hour, apps in buckets.items()}
+                     for day, buckets in self.hours.items()}
             cursor = datetime.fromtimestamp(started)
             remaining = seconds
             while remaining > 0:
-                midnight = datetime.combine(cursor.date() + timedelta(days=1), datetime.min.time())
-                part = min(remaining, (midnight - cursor).total_seconds())
+                boundary = cursor.replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+                part = min(remaining, (boundary - cursor).total_seconds())
                 apps = updated.setdefault(cursor.date().isoformat(), {})
                 apps[app] = apps.get(app, 0) + part
+                bucket = hours.setdefault(cursor.date().isoformat(), {}).setdefault(str(cursor.hour), {})
+                bucket[app] = bucket.get(app, 0) + part
                 remaining -= part
-                cursor = midnight
-            self.commit(updated)
+                cursor = boundary
+            self.commit(updated, hours=hours)
 
-    def commit(self, updated, recovered=None):
+    def commit(self, updated, recovered=None, hours=None):
         recovered = self.recovered_days if recovered is None else recovered
+        # Imports keep hourly data for untouched dates; replacement data has no inferred hours.
+        hours = ({day: buckets for day, buckets in self.hours.items()
+                  if updated.get(day) == self.days.get(day)} if hours is None else hours)
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.storage_version == 1 and self.path.exists():
+            original = self.path.read_bytes()
+            if json.loads(original).get('version') == 1:
+                backup = self.path.with_name(self.path.stem + '.before-hourly-v2.json')
+                if not backup.exists():
+                    with backup.open('xb') as output:
+                        output.write(original)
         temporary = None
         try:
             with tempfile.NamedTemporaryFile(mode='w', encoding='utf-8', dir=self.path.parent,
                     prefix='.daily-', suffix='.tmp', delete=False) as output:
                 temporary = output.name
-                json.dump({'version': 1, 'days': updated, 'recovered_days': recovered}, output, indent=2)
+                json.dump({'version': 2, 'days': updated, 'hours': hours,
+                           'recovered_days': recovered}, output, indent=2)
                 output.flush()
                 os.fsync(output.fileno())
             os.replace(temporary, self.path)
@@ -85,7 +122,31 @@ class DailyUsageStore:
             if temporary and os.path.exists(temporary):
                 os.unlink(temporary)
         self.days = updated
+        self.storage_version = 2
+        self.hours = hours
         self.recovered_days = recovered
+
+    def hourly_history(self, anchor, hour=None, now=None):
+        """Return saved detail only; do not invent hours for older daily totals."""
+        now = now or datetime.now()
+        day = datetime.strptime(anchor, '%Y-%m-%d').date()
+        if day > now.date() or (hour is not None and (type(hour) is not int or not 0 <= hour < 24)):
+            raise ValueError('Choose a valid date and hour.')
+        with self.lock:
+            buckets = self.hours.get(day.isoformat(), {})
+            chart = [{'hour': i, 'apps': buckets.get(str(i), {}).copy(),
+                      'future': day == now.date() and i > now.hour} for i in range(24)]
+            apps = defaultdict(float)
+            for entry in chart:
+                if hour is None or entry['hour'] == hour:
+                    for app, seconds in entry['apps'].items():
+                        apps[app] += seconds
+            total = sum(self.days.get(day.isoformat(), {}).values())
+            detailed = sum(sum(entry['apps'].values()) for entry in chart)
+        return {'start': day.isoformat(), 'end': day.isoformat(), 'days': 1,
+                'chart': chart, 'apps': dict(sorted(apps.items(), key=lambda item: (-item[1], item[0]))),
+                'daily_total': total, 'detailed_total': detailed, 'unallocated': max(0, total - detailed),
+                'hour': hour}
 
     def recover_legacy_logs(self, directory, today=None):
         """Import complete, missing past days only; never merge overlapping data."""
@@ -285,15 +346,17 @@ class DigitalWellnessApp:
 
     def build_history_page(self):
         self.page_header(self.history_frame, "YOUR TIME OVER TIME", "History",
-                         "Explore a day or a week. Select an application to see its trend.")
+                         "Explore hours, days or weeks. Select an application to see its trend.")
         self.history_date = tk.StringVar(value=datetime.now().date().isoformat())
         self.history_mode = tk.StringVar(value="Daily")
         self.history_app = None
+        self.history_hour = tk.StringVar(value='All hours')
+        self.history_hour_context = None
         self.history_anchor = self.history_date.get()
         self.history_refresh_time = 0
         controls = self.ui_frame(self.history_frame)
         controls.pack(fill="x", padx=26, pady=(0, 12))
-        for mode in ("Daily", "Weekly"):
+        for mode in ("Daily", "Hourly", "Weekly"):
             ttk.Radiobutton(controls, text=mode, value=mode, variable=self.history_mode,
                             command=self.refresh_history).pack(side="left", padx=(0, 12))
         ttk.Button(controls, text="← Previous", command=lambda: self.move_history(-1)).pack(side="left", padx=(8, 6))
@@ -342,6 +405,9 @@ class DigitalWellnessApp:
         self.history_table_title.pack(side="left")
         self.history_clear = ttk.Button(toolbar, text="Show all apps", command=self.clear_history_app)
         self.history_clear.pack(side="right")
+        self.history_hour_picker = ttk.Combobox(toolbar, textvariable=self.history_hour,
+            values=['All hours'] + [f'{i:02}:00' for i in range(24)], state='readonly', width=10)
+        self.history_hour_picker.bind('<<ComboboxSelected>>', lambda event: self.refresh_history())
         table = self.ui_frame(bottom, "card")
         table.pack(fill="both", expand=True)
         self.history_tree = ttk.Treeview(table, columns=("app", "duration", "share", "change"),
@@ -405,6 +471,14 @@ class DigitalWellnessApp:
     def refresh_history(self):
         if not hasattr(self, "palette"):
             return
+        context = (self.history_date.get().strip(), self.history_mode.get())
+        if context != self.history_hour_context:
+            self.history_hour.set('All hours')
+            self.history_hour_context = context
+        if self.history_mode.get() == 'Hourly':
+            self.refresh_hourly_history()
+            return
+        self.history_hour_picker.pack_forget()
         try:
             weekly = self.history_mode.get() == "Weekly"
             self.history_comparison = (self.tracker.daily_store.weekly_comparison(
@@ -412,6 +486,7 @@ class DigitalWellnessApp:
             snapshot = (self.history_comparison['current'] if weekly else
                         self.tracker.daily_store.history(self.history_date.get().strip()))
         except ValueError:
+            self.history_data = None
             self.history_feedback.configure(text="Enter a valid date (YYYY-MM-DD), no later than today.")
             return
         self.history_anchor = datetime.strptime(self.history_date.get().strip(), '%Y-%m-%d').date().isoformat()
@@ -470,6 +545,9 @@ class DigitalWellnessApp:
         self.history_refresh_time = time.monotonic()
 
     def draw_history(self):
+        if self.history_mode.get() == 'Hourly':
+            self.draw_hourly_history()
+            return
         data = getattr(self, "history_data", None)
         if not data:
             return
@@ -536,15 +614,100 @@ class DigitalWellnessApp:
         self.history_canvas.draw_idle()
 
     def history_chart_click(self, event):
-        if event.inaxes is not self.history_ax or event.xdata is None:
+        if not getattr(self, 'history_data', None) or event.inaxes is not self.history_ax or event.xdata is None:
             return
         index = round(event.xdata)
+        if self.history_mode.get() == 'Hourly':
+            if 0 <= index < 24 and not self.history_data['chart'][index]['future']:
+                self.history_hour.set(f'{index:02}:00')
+                self.refresh_history()
+            return
         if 0 <= index < 7:
             entry = self.history_data["chart"][index]
             if not entry["future"]:
                 self.history_mode.set("Daily")
                 self.history_date.set(entry["date"])
                 self.refresh_history()
+
+    def refresh_hourly_history(self):
+        try:
+            hour = None if self.history_hour.get() == 'All hours' else int(self.history_hour.get()[:2])
+            data = self.tracker.daily_store.hourly_history(self.history_date.get().strip(), hour)
+        except ValueError:
+            self.history_data = None
+            self.history_feedback.configure(text='Enter a valid date (YYYY-MM-DD), no later than today.')
+            return
+        self.history_data = data
+        self.history_anchor = data['start']
+        self.history_date.set(data['start'])
+        self.history_hour_picker.pack(side='right', padx=(0, 10))
+        self.history_hour_picker.configure(values=['All hours'] +
+            [f'{row["hour"]:02}:00' for row in data['chart'] if not row['future']])
+        self.history_next.configure(state='disabled' if data['start'] == datetime.now().date().isoformat() else 'normal')
+        if self.history_app not in data['apps']:
+            self.history_app = None
+        total = sum(data['apps'].values())
+        self.history_tree.configure(displaycolumns=('app', 'duration', 'share'))
+        for item in self.history_tree.get_children():
+            if item not in data['apps']:
+                self.history_tree.delete(item)
+        for index, (app, seconds) in enumerate(data['apps'].items()):
+            values = (app, self.readable_duration(seconds), f'{seconds / total:.1%}' if total else '0%')
+            if self.history_tree.exists(app):
+                self.history_tree.item(app, values=values)
+                self.history_tree.move(app, '', index)
+            else:
+                self.history_tree.insert('', index, iid=app, values=values)
+        if not data['detailed_total']:
+            feedback = 'No hourly detail for this date. Hourly recording starts with this update; daily history is preserved.'
+        elif data['unallocated'] > 1e-6:
+            feedback = f"Partial hourly detail: {self.readable_duration(data['unallocated'])} of this day's usage has no saved hour. Daily totals are preserved."
+        else:
+            feedback = 'Saved foreground usage by local hour. Empty hours mean no saved activity, not proof of zero use.'
+        if data['start'] == datetime.now().date().isoformat():
+            feedback += ' Today is still in progress.'
+        self.history_feedback.configure(text=feedback)
+        interval = 'All hours' if hour is None else f'{hour:02}:00–{hour + 1:02}:00'
+        self.history_table_title.configure(text=f'{interval} · {len(data["apps"])} apps · sorted by time')
+        self.draw_hourly_history()
+        self.history_refresh_time = time.monotonic()
+
+    def draw_hourly_history(self):
+        data = getattr(self, 'history_data', None)
+        if not data:
+            return
+        app = self.history_app
+        total = data['apps'].get(app, 0) if app else sum(data['apps'].values())
+        self.history_heading.configure(text=datetime.strptime(data['start'], '%Y-%m-%d').strftime('%A, %d %B %Y'))
+        self.history_summary.configure(text=f"Selected: {self.readable_duration(total)}\nDay total: {self.readable_duration(data['daily_total'])}")
+        self.history_scope.configure(text=f'{self.short_app_name(app, 24) if app else "All apps"}\n{self.history_hour.get()} · Local time\nChoose an hour to see its apps')
+        self.history_clear.configure(state='normal' if app else 'disabled')
+        self.history_chart_title.configure(text='Hourly activity · Click a bar or choose an hour')
+        ax = self.history_ax
+        ax.clear()
+        self.history_figure.set_facecolor(self.palette['card'])
+        ax.set_facecolor(self.palette['card'])
+        self.history_canvas.get_tk_widget().configure(background=self.palette['card'])
+        values = [(row['apps'].get(app, 0) if app else sum(row['apps'].values())) / 60 for row in data['chart']]
+        ax.bar(range(24), values, width=.8,
+               color=[self.palette['accent'] if data['hour'] is None or data['hour'] == i else self.palette['muted'] for i in range(24)])
+        for row in data['chart']:
+            if row['future']:
+                ax.axvspan(row['hour'] - .5, row['hour'] + .5, color=self.palette['track'], alpha=.5)
+        if not any(values):
+            ax.text(.5, .55, 'No saved hourly activity', ha='center', transform=ax.transAxes, color=self.palette['muted'])
+        ax.set_xticks(range(0, 24, 3), [f'{i:02}:00' for i in range(0, 24, 3)])
+        ax.set_xlim(-.6, 23.6)
+        ax.set_ylim(0, max(1, max(values, default=0) * 1.15))
+        ax.set_ylabel('Minutes', color=self.palette['muted'], fontsize=9)
+        ax.tick_params(colors=self.palette['muted'], labelsize=8, length=0)
+        ax.yaxis.set_major_locator(plt.MaxNLocator(3))
+        ax.yaxis.grid(True, color=self.palette['track'], linewidth=.6)
+        ax.set_axisbelow(True)
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        self.history_figure.subplots_adjust(left=.09, right=.98, top=.95, bottom=.24)
+        self.history_canvas.draw_idle()
 
     def build_sidebar(self):
         sidebar = self.ui_frame(self.app_shell, "card", width=170)
@@ -1049,7 +1212,7 @@ class DigitalWellnessApp:
                   selectbackground=[('readonly', self.palette['accent'])],
                   selectforeground=[('readonly', self.palette['button_text'])])
         # ttk popdowns are native Tcl listboxes rather than Python child widgets.
-        for combo in (self.day_picker, self.limit_app_entry):
+        for combo in (self.day_picker, self.limit_app_entry, self.history_hour_picker):
             popup = self.root.tk.call('ttk::combobox::PopdownWindow', str(combo))
             self.root.tk.call(str(popup) + '.f.l', 'configure',
                 '-background', self.palette['card'], '-foreground', self.palette['ink'],

@@ -63,7 +63,7 @@ Open **History** in the sidebar and choose **Daily** or **Weekly**. Use Previous
 
 The chart shows the week containing the selected date. Click a day's bar to open its daily breakdown. The table includes all recorded apps, sorted by duration, with their percentage of the entire selected period. Selecting a row filters the summary and chart to that app; **Show all apps** restores the overall view.
 
-Weekly averages divide recorded usage by elapsed calendar days in the selected week (seven for completed weeks). Missing records are labeled **No data**, and future days are marked separately; an unrecorded day is not proof of zero screen use. The current day is partial while tracking continues. Saved history works immediately without a data migration. Hourly timelines are not available because history currently stores daily totals only.
+Weekly averages divide recorded usage by elapsed calendar days in the selected week (seven for completed weeks). Missing records are labeled **No data**, and future days are marked separately; an unrecorded day is not proof of zero screen use. The current day is partial while tracking continues. Saved daily history remains available. The Hourly view shows newly recorded activity; older daily-only totals cannot be reconstructed into hours.
 
 ### Idle, lock, and resume behavior
 
@@ -200,3 +200,13 @@ Completed weeks compare Monday–Sunday. The current week compares Monday–toda
 The view shows record coverage for both periods. If either period has a missing date, the change is unavailable rather than reporting a misleading decrease. A zero baseline is labeled **No prior usage**; no infinite percentage is displayed. Recovered logs are identified because older records may include idle time. Comparisons read existing daily storage without a migration or new writes.
 
 Verify by choosing a completed week with records for every day in both weeks: the overall change should equal `(selected total - previous total) / previous total × 100`, and the daily average should be the selected total divided by seven. Then choose the current week to check its partial-week label, select an app to inspect its change, and choose an older unrecorded week to check the missing-data message.
+
+## Hourly usage
+
+Open **History → Hourly**, select a date, and click an hour's bar or use the hour dropdown to see its app breakdown. Choose **All hours** to restore the day's detailed app totals. Selecting an app filters the chart; **Show all apps** clears that filter. Daily and Weekly views continue to use the complete saved daily totals.
+
+The 24 bars group new attended usage into local clock hours. Intervals crossing an hour or midnight are split. Idle, lock and suspend filtering also applies to hourly totals. Today is labeled in progress and future hours are shaded. An empty hour means no saved activity, not proof that the computer was unused. Repeated local clock hours share a bucket; this is an hourly summary, not a precise session timeline.
+
+Both daily and hourly totals are saved in one atomic `data/daily_usage.json` replacement (format version 2). Version 1 history is readable without rewriting it. Before its first upgrade write, the app keeps `data/daily_usage.before-hourly-v2.json`. Existing daily totals and recovered-day markers are retained; older records are not assigned fabricated hours. A day containing both old and new activity displays a partial-detail message and the duration without an hourly breakdown. Previous app versions cannot read the version 2 file; keep backups if you plan to roll back.
+
+To verify: record a few minutes of activity, open **History → Hourly → Today**, and select the current hour. Confirm the app list and duration, quit fully, and reopen to check persistence. Choose an older daily-only date to confirm its daily total remains visible with a no-hourly-detail message. Run `python -m unittest discover -s tests -q` to check migration, rollback, boundary splitting, and attendance filtering using temporary files.
