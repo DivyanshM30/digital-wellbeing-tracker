@@ -1,0 +1,30 @@
+name: Windows installer
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Prepare build environment
+        shell: pwsh
+        run: |
+          python -m venv .venv
+          ./.venv/Scripts/python.exe -m pip install -r packaging/requirements-build.txt
+      - name: Build and check installer
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DigitalWellbeingTracker-Windows-x64
+          path: |
+            dist/installer/*.exe
+            dist/installer/*.sha256
+            dist/bundle-check.json
+          if-no-files-found: error

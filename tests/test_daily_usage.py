@@ -1,5 +1,6 @@
 """Persistence checks using temporary files; no monitoring or personal data."""
 import ast
+from app_paths import application_home
 from collections import defaultdict
 from datetime import datetime, timedelta
 import json
@@ -18,7 +19,7 @@ from unittest.mock import Mock, patch
 
 
 tree = ast.parse((Path(__file__).resolve().parents[1] / 'main.py').read_text(encoding='utf-8'))
-namespace = dict(Path=Path, threading=threading, datetime=datetime, timedelta=timedelta,
+namespace = dict(application_home=application_home, Path=Path, threading=threading, datetime=datetime, timedelta=timedelta,
                  tempfile=tempfile, math=math, json=json, os=os, time=time, queue=queue,
                  sys=sys, re=re, defaultdict=defaultdict, __file__=str(Path(__file__).resolve().parents[1] / 'main.py'))
 classes = [node for node in tree.body if isinstance(node, ast.ClassDef)]

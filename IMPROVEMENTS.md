@@ -93,3 +93,9 @@ History now compares matching weekday spans with the preceding week, shows daily
 ## Hourly history update
 
 Implemented local-hour buckets for new attended usage, click/dropdown hour selection, app breakdowns, and explicit partial/legacy-only detail states. Daily and hourly totals share one atomic version 2 transaction. Version 1 totals are preserved with a backup before upgrade; legacy imports retain existing hourly detail. Regression tests cover hour/midnight boundaries, reopen, migration failure, malformed detail, and idle/resume filtering.
+
+## Windows installer update
+
+Added a windowed PyInstaller bundle, per-user Inno Setup installer, pinned build constraints, build script, and a manually triggered artifact workflow. Bundled usage and settings resolve under Local AppData, independently of upgradeable program files; source launches retain repository-relative storage. Uninstall preserves data and only removes a matching installed startup entry. Existing source-history migration is documented and manual.
+
+Validation: 84 regression tests pass, including frozen-path persistence across program moves. The locally built executable passes isolated checks for real Tk History, light/dark themes, Matplotlib rendering, atomic history reload, KMeans, and Windows tray/notification/speech imports. Setup compiles successfully. Clean-machine install/upgrade/uninstall, actual sign-in, tray interaction, and audible speech still require manual checks. The installer is unsigned and no release has been published.

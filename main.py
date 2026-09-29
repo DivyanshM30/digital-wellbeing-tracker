@@ -28,13 +28,13 @@ import sv_ttk
 import pandas as pd
 from sklearn.cluster import KMeans
 from startup import StartupRegistration
+from app_paths import application_home
 
 class DailyUsageStore:
     """Daily totals committed atomically, independent of analytics or shutdown."""
 
     def __init__(self, path=None):
-        application_path = sys.executable if getattr(sys, 'frozen', False) else __file__
-        self.path = Path(path) if path else Path(application_path).resolve().parent / 'data' / 'daily_usage.json'
+        self.path = Path(path) if path else application_home(__file__) / 'data' / 'daily_usage.json'
         self.lock = threading.RLock()
         self.days = {}
         self.hours = {}
@@ -2045,13 +2045,13 @@ def main():
     # a second process from overwriting the first process's daily snapshots.
     import msvcrt
     startup = '--startup' in sys.argv[1:]
-    application_path = sys.executable if getattr(sys, 'frozen', False) else __file__
-    # Windows sign-in may launch from System32. Reuse the normal config/log paths.
-    os.chdir(Path(application_path).resolve().parent)
+    home = application_home(__file__)
+    home.mkdir(parents=True, exist_ok=True)
+    # Windows sign-in may launch from System32; installed data stays in AppData.
+    os.chdir(home)
     root = tk.Tk()
     root.withdraw()
-    application_path = sys.executable if getattr(sys, 'frozen', False) else __file__
-    data_dir = Path(application_path).resolve().parent / 'data'
+    data_dir = home / 'data'
     data_dir.mkdir(parents=True, exist_ok=True)
     with open(data_dir / 'tracker.lock', 'a+b') as instance:
         instance.seek(0, os.SEEK_END)
@@ -2080,6 +2080,11 @@ def main():
 
 
 if __name__ == "__main__":
+    from multiprocessing import freeze_support
+    freeze_support()
+    if len(sys.argv) == 3 and sys.argv[1] == '--self-test':
+        from bundle_check import run_check
+        sys.exit(run_check(sys.modules[__name__], sys.argv[2]))
     main()
 
 

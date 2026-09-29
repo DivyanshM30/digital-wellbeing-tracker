@@ -91,7 +91,7 @@ The desktop implementation stores data locally in plain-text files:
 | `usage_log.csv` | Legacy analysis snapshots; retained but no longer used for new insights |
 | `error_log.txt` | Analysis errors |
 
-Daily history is saved in the `data` directory beside `main.py`, independent of the launch directory. Durations use a monotonic clock and intervals are split at local midnight. Each tracking sample is committed through an atomic file replacement; pause and exit save the final fraction of an interval. Abrupt termination can still lose the interval since the last successful sample, especially during a blocking speech alert. Only one instance can run at a time.
+Daily history is saved in the `data` directory beside `main.py` when running from source, or under `%LOCALAPPDATA%\DigitalWellbeingTracker` when running the bundled app, independent of the launch directory. Durations use a monotonic clock and intervals are split at local midnight. Each tracking sample is committed through an atomic file replacement; pause and exit save the final fraction of an interval. Abrupt termination can still lose the interval since the last successful sample. Only one instance per data directory can run at a time.
 
 At startup, valid dated `logs/YYYY-MM-DD.log` files recover missing past days into daily history. Existing daily records and the current day are never merged or overwritten. Malformed files and implausible totals are skipped. Before recovery changes an existing history file, a copy is saved as `data/daily_usage.before-legacy-import.json`. History labels recovered periods; original logs remain untouched. Fully exit the tray app and restart to run recovery after upgrading.
 
@@ -120,7 +120,7 @@ readme.md                  Setup and usage
 IMPROVEMENTS.md            Prioritized review and suggested work
 ```
 
-Local prototypes, generated data, and Windows shortcuts may also appear. A `.lnk` is a shortcut, not an executable. The landing page now provides source installation instructions instead of linking to a shortcut; a verified installer is still needed.
+Local prototypes, generated data, and Windows shortcuts may also appear. A `.lnk` is a shortcut, not an executable. The landing page provides source installation instructions. The installer build is described below; generated binaries are not committed to Git.
 
 ## Preview the landing page
 
@@ -132,16 +132,16 @@ From the project root:
 
 Open [the local page](http://127.0.0.1:8000). Press Ctrl+C to stop. No Node.js build step is required. The responsive page includes a project screenshot, setup commands, and expandable answers about data, limitations, and Windows support.
 
-## Build a Windows executable
+## Build a Windows installer
 
-An initial local build command is:
+With 64-bit Python 3.12 and Inno Setup 6 installed:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install pyinstaller
-.\.venv\Scripts\python.exe -m PyInstaller --onefile --collect-data sv_ttk --name DigitalWellbeingTracker main.py
+.\.venv\Scripts\python.exe -m pip install -r packaging/requirements-build.txt
+.\scripts\build-windows.ps1
 ```
 
-Expected output: `dist/DigitalWellbeingTracker.exe`. This recipe was not validated during the review. Test launch, themes, charts, speech, tray actions, and data saving on a clean Windows machine before publishing. Data is written beside the executable; use a writable installation folder.
+Output: `dist/installer/DigitalWellbeingTracker-0.1.0-Setup-x64.exe`, with a SHA-256 checksum. The script runs tests and an isolated bundled UI check before compilation. Installation is per-user, includes Python, and preserves data outside the program folder. See [the installer guide](docs/windows-installer.md) for migration, updates, build options, and manual verification. Clean-machine installation and code signing remain release checks.
 
 ## Troubleshooting
 
@@ -167,7 +167,7 @@ Insights shows recorded-day coverage and enables analysis after three recorded d
 
 Dropdowns use matching light/dark popup colors and larger text. The date picker displays readable calendar dates and retains your selection during refreshes. In App Limits, refresh the running-app list, type to filter it, and use the arrow keys to browse. Enter in the app field moves to the duration; Enter in a duration field saves. Choosing an existing app opens its limit for editing, and saving keeps the row selected. Refreshing the app list preserves your draft. Insights can be refreshed again on the same day.
 
-CI is not configured. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for remaining correctness issues and proposed validation scenarios.
+A manually triggered Windows installer workflow builds and checks downloadable artifacts. See [IMPROVEMENTS.md](IMPROVEMENTS.md) for remaining correctness issues and proposed validation scenarios.
 
 No repository-level license file was found. Add an explicit license before presenting the project as licensed for reuse.
 
@@ -181,7 +181,7 @@ In **Settings → Startup and limits**, enable **Start with Windows**. This is o
 
 Disabling the setting removes the app's startup entry and does not stop the current tracking session. Windows may delay startup; if you disabled the app in Task Manager → Startup apps, re-enable it there too. The checkbox reflects the registered command, not Task Manager's separate enable/disable control. If the tray cannot initialize, the window appears after five seconds so the tracker remains accessible.
 
-Startup uses absolute paths to this installation and its `pythonw.exe` (or the packaged executable). If you move the folder or recreate the virtual environment, open the app and enable the setting again. Settings and logs resolve beside `main.py` or the executable, even when Windows launches from another working directory. Existing atomic daily usage storage is unchanged.
+Startup uses absolute paths to this installation and its `pythonw.exe` (or the packaged executable). If you move the folder or recreate the virtual environment, open the app and enable the setting again. Source settings and logs resolve beside `main.py`; bundled app data resolves under `%LOCALAPPDATA%\DigitalWellbeingTracker`, even when Windows launches from another working directory. Existing atomic daily usage storage is unchanged.
 
 To verify without signing out, exit the existing tray instance and run:
 
